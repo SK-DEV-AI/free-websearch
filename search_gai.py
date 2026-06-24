@@ -52,33 +52,15 @@ CUTOFF_MARKERS = [
     "Le risposte dell'IA possono contenere errori",
 ]
 
-# ── Mutex ─────────────────────────────────────────────────────────
-
-class Mutex:
-    def __init__(self):
-        self._locked = False
-        self._acquirers: list[asyncio.Future] = []
-
-    async def acquire(self):
-        if not self._locked:
-            self._locked = True
-            return
-        fut = asyncio.get_event_loop().create_future()
-        self._acquirers.append(fut)
-        await fut
-
-    def release(self):
-        if self._acquirers:
-            self._acquirers.pop(0).set_result(True)
-        else:
-            self._locked = False
-
-    async def __aenter__(self):
-        await self.acquire()
-        return self
-
-    async def __aexit__(self, *args):
-        self.release()
+MIME_MAP = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf',
+    '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.avif': 'image/avif',
+    '.mp4': 'video/mp4', '.mov': 'video/mp4', '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+    '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv',
+    '.json': 'application/json', '.xml': 'text/xml', '.html': 'text/html',
+}
 
 # ── CDP browser singleton ─────────────────────────────────────────
 
@@ -169,7 +151,7 @@ class GoogleAIClient:
         self._available_at: float = 0
         self._page = None
         self._page_target_id = None
-        self._mutex = Mutex()
+        self._mutex = asyncio.Lock()
 
     async def _get_shared_browser(self):
         if not self._cdp_url:
@@ -352,14 +334,7 @@ class GoogleAIClient:
                     b64 = base64.b64encode(content).decode('ascii')
                     ext = os.path.splitext(path.lower())[1]
                     name = os.path.basename(path)
-                    mime_map = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-                               '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf',
-                               '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.avif': 'image/avif',
-                               '.mp4': 'video/mp4', '.mov': 'video/mp4', '.mp3': 'audio/mpeg',
-                               '.wav': 'audio/wav', '.ogg': 'audio/ogg',
-                               '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv',
-                               '.json': 'application/json', '.xml': 'text/xml', '.html': 'text/html'}
-                    mime = mime_map.get(ext, 'application/octet-stream')
+                    mime = MIME_MAP.get(ext, 'application/octet-stream')
                     ok = await p.evaluate("""async ({b64, mime, name}) => {
                         try {
                             const r = await fetch(`data:${mime};base64,${b64}`);
@@ -414,14 +389,7 @@ class GoogleAIClient:
                 if resp.status_code == 200 and len(resp.content) <= 10_000_000:
                     b64 = base64.b64encode(resp.content).decode('ascii')
                     ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower() or '.bin'
-                    mime_map = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-                               '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf',
-                               '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.avif': 'image/avif',
-                               '.mp4': 'video/mp4', '.mov': 'video/mp4', '.mp3': 'audio/mpeg',
-                               '.wav': 'audio/wav', '.ogg': 'audio/ogg',
-                               '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv',
-                               '.json': 'application/json', '.xml': 'text/xml', '.html': 'text/html'}
-                    mime = mime_map.get(ext, resp.headers.get('content-type', 'application/octet-stream'))
+                    mime = MIME_MAP.get(ext, resp.headers.get('content-type', 'application/octet-stream'))
                     ok2 = await p.evaluate("""async ({b64, mime, name}) => {
                         try {
                             const resp = await fetch(`data:${mime};base64,${b64}`);

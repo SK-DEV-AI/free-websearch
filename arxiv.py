@@ -12,7 +12,8 @@ async def search_arxiv(query: str, count: int = 3, search_field: str = "all",
                        category: str = "", raw_query: str = "") -> list[dict]:
     try:
         if raw_query:
-            search_q = raw_query
+            params = {"search_query": raw_query, "start": start,
+                "max_results": min(count, 50), "sortBy": sort_by, "sortOrder": sort_order}
         elif id_list:
             params = {"id_list": id_list, "start": start,
                 "max_results": min(count, 50), "sortBy": sort_by, "sortOrder": sort_order}
@@ -20,7 +21,6 @@ async def search_arxiv(query: str, count: int = 3, search_field: str = "all",
             search_q = f"{search_field}:{query}" if search_field != "all" else f"all:{query}"
             if category:
                 search_q += f" AND cat:{category}"
-        if not id_list:
             params = {"search_query": search_q, "start": start,
                 "max_results": min(count, 50), "sortBy": sort_by, "sortOrder": sort_order}
         async with httpx.AsyncClient(timeout=15) as c:

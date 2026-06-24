@@ -65,6 +65,10 @@ def _set_cache(key: str, val: Any):
         stale = [k for k, (t, _) in list(_cache.items()) if now - t > 300]
         for k in stale:
             _cache.pop(k, None)
+        if len(_cache) > _MAX_CACHE:
+            oldest = sorted(_cache.keys(), key=lambda k: _cache[k][0])[:len(_cache) - _MAX_CACHE]
+            for k in oldest:
+                _cache.pop(k, None)
 
 
 def cached(ttl: int = CACHE_TTL):

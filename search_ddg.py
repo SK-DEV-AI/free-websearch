@@ -85,6 +85,48 @@ async def search_ddg(
 
 
 
+async def ddgs_maps(q: str, place: str = "", lat: float = 0.0,
+                    lng: float = 0.0, radius: int = 0) -> list[dict]:
+    """DuckDuckGo Maps — find local places and businesses."""
+    try:
+        ddgs = DDGS(timeout=10)
+        kw: dict[str, Any] = {"query": q}
+        if place:
+            kw["place"] = place
+        if lat:
+            kw["lat"] = lat
+        if lng:
+            kw["lng"] = lng
+        if radius:
+            kw["radius"] = radius
+        raw = await asyncio.to_thread(lambda: list(ddgs.maps(**kw)))
+        return [{"title": r.get("title", ""),
+                 "url": r.get("url", ""),
+                 "address": r.get("address", ""),
+                 "phone": r.get("phone", ""),
+                 "website": r.get("website", ""),
+                 "source": "duckduckgo-maps",
+                 "category": r.get("category", ""),
+                 "latitude": r.get("geo", {}).get("lat", 0),
+                 "longitude": r.get("geo", {}).get("lng", 0)}
+                for r in raw]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+async def ddgs_translate(text: str, to: str = "en") -> dict | None:
+    """DuckDuckGo Translate — translate text between languages."""
+    try:
+        ddgs = DDGS(timeout=10)
+        result = await asyncio.to_thread(lambda: ddgs.translate(text, to=to))
+        if result:
+            return {"success": True, "text": text, "translated": result.get("translated", ""),
+                    "source": result.get("source", to), "to": to}
+        return None
+    except Exception:
+        return None
+
+
 async def ddgs_extract(url: str, extract_type: str = "markdown") -> dict | None:
     """Lightweight URL content extraction using ddgs library (no trafilatura needed)."""
     try:

@@ -7,6 +7,7 @@ from crawl4ai.deep_crawling import BFSDeepCrawlStrategy, DFSDeepCrawlStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter, BM25ContentFilter
+from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
 from embed import _embed, _cosine_sim
 
 
@@ -35,6 +36,7 @@ async def crawl_url(
     cdp_url: str = "", adjust_viewport_to_content: bool = False,
     log_console: bool = False,
     content_filter: str = "", filter_query: str = "",
+    css_extract: dict | None = None,
 ) -> dict:
     browser_kw: dict[str, Any] = {
         "headless": True, "verbose": False, "ignore_https_errors": True,
@@ -75,10 +77,13 @@ async def crawl_url(
         "stream": stream, "method": method, "score_links": score_links,
         "markdown_generator": DefaultMarkdownGenerator(),
     }
+    if css_extract:
+        run_kw["extraction_strategy"] = JsonCssExtractionStrategy(
+            schema=css_extract)
     if content_filter:
         cf_map = {"pruning": PruningContentFilter(threshold=word_count_threshold / 100, threshold_type="dynamic"),
-                  "bm25": BM25ContentFilter(user_query=filter_query, use_stemming=True),
-                  "bm25_hq": BM25ContentFilter(user_query=filter_query, use_stemming=True)}
+                  "bm25": BM25ContentFilter(user_query=filter_query, threshold=0.15),
+                  "bm25_hq": BM25ContentFilter(user_query=filter_query, threshold=0.1, perform_stemming=True)}
         cf = cf_map.get(content_filter)
         if cf:
             run_kw["markdown_generator"] = DefaultMarkdownGenerator(content_filter=cf)
@@ -150,14 +155,16 @@ async def crawl_url(
                 if item_emb:
                     q_emb = item_emb[0] if item_emb else None
                     deduped_pages = []
+                    deduped_indices = []
                     seen_emb: list[list[float]] = []
-                    for p, emb in zip(pages, item_emb):
+                    for i, (p, emb) in enumerate(zip(pages, item_emb)):
                         is_dup = any(_cosine_sim(emb, se) > 0.92 for se in seen_emb)
                         if not is_dup:
                             deduped_pages.append(p)
+                            deduped_indices.append(i)
                             seen_emb.append(emb)
                     pages = deduped_pages
-                    combined = [combined[i] for i, p in enumerate(pages)]
+                    combined = [combined[i] for i in deduped_indices]
             return {"success": True, "url": url, "pages_crawled": len(pages),
                     "pages": pages,
                     "combined_markdown_len": sum(p["markdown_len"] for p in pages),

@@ -258,7 +258,7 @@ async def search_wikipedia_random(count: int = 5, language: str = "en",
 
 
 async def search_wikipedia_recentchanges(language: str = "en", count: int = 20,
-                                          type_filter: str = "") -> list[dict]:
+                                           type_filter: str = "") -> list[dict]:
     """Get recent changes feed."""
     try:
         params = {"action": "query", "list": "recentchanges", "format": "json",
@@ -274,5 +274,28 @@ async def search_wikipedia_recentchanges(language: str = "en", count: int = 20,
                  "oldlen": c.get("oldlen", 0), "newlen": c.get("newlen", 0),
                  "revid": c.get("revid", 0), "pageid": c.get("pageid", 0)}
                 for c in data.get("query", {}).get("recentchanges", [])]
+    except Exception:
+        return []
+
+
+async def fetch_wikipedia_langlinks(title: str, language: str = "en",
+                                     count: int = 50) -> list[dict]:
+    """Get language links (interwiki links) from a page."""
+    try:
+        data = await _get({"action": "query", "prop": "langlinks", "titles": title,
+                           "format": "json", "lllimit": min(count, 500), "redirects": 1,
+                           "llprop": "url|langname|autonym"}, language)
+        if not data:
+            return []
+        for pid, page in data.get("query", {}).get("pages", {}).items():
+            if pid == "-1":
+                continue
+            langlinks = page.get("langlinks", [])
+            return [{"lang": ll.get("lang", ""),
+                     "langname": ll.get("langname", ""),
+                     "autonym": ll.get("autonym", ""),
+                     "title": ll.get("*", ""),
+                     "url": ll.get("*", "")} for ll in langlinks[:count]]
+        return []
     except Exception:
         return []

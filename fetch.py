@@ -309,7 +309,6 @@ async def scrapling_stealthy_fetch(
                     except Exception:
                         pass
                 if attempt < retries - 1:
-                    import asyncio
                     await asyncio.sleep(min(0.5 * (attempt + 1), 2.0))
                     continue
                 break

@@ -55,7 +55,8 @@ async def _restart_worker():
     return await _start_worker()
 
 
-async def rerank(query: str, passages: list[dict], top_k: int = 20) -> list[dict]:
+async def rerank(query: str, passages: list[dict], top_k: int = 20,
+                 max_length: int = 8192) -> list[dict]:
     """Rerank passages by relevance to query. Returns passages sorted by score.
 
     Falls back to returning passages unranked on any failure.
@@ -83,7 +84,8 @@ async def rerank(query: str, passages: list[dict], top_k: int = 20) -> list[dict
                 item["snippet"] = item["content"][:2000]
             normalized.append(item)
 
-        req = json.dumps({"query": query, "passages": normalized, "top_k": top_k})
+        req = json.dumps({"query": query, "passages": normalized, "top_k": top_k,
+                          "max_length": max_length})
         try:
             _PROC.stdin.write((req + "\n").encode())
             await asyncio.wait_for(_PROC.stdin.drain(), timeout=5)

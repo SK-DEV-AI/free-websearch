@@ -25,7 +25,8 @@ async def _next_nv_key() -> str:
         return k
 
 
-async def _embed(texts: list[str], input_type: str = "passage") -> list[list[float]] | None:
+async def _embed(texts: list[str], input_type: str = "passage",
+                 embed_model: str = "") -> list[list[float]] | None:
     if not _NV_KEYS:
         return None
     results: list[list[float] | None] = [None] * len(texts)
@@ -41,10 +42,11 @@ async def _embed(texts: list[str], input_type: str = "passage") -> list[list[flo
             uncached_idx.append(i)
     if uncached:
         nv_key = await _next_nv_key()
+        model = embed_model or NV_EMBED_MODEL
         try:
             async with httpx.AsyncClient(timeout=15) as c:
                 r = await c.post(f"{NV_BASE}/embeddings", json={
-                    "model": NV_EMBED_MODEL, "input": uncached,
+                    "model": model, "input": uncached,
                     "input_type": input_type, "encoding_format": "float",
                     "truncate": "END",
                 }, headers={"Authorization": f"Bearer {nv_key}"})

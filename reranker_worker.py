@@ -22,17 +22,23 @@ def _load(model_name: str = MODEL_NAME):
             _rankers[key] = (model, tok, torch.device("cpu"))
     return _rankers[key]
 
-def _rerank(query: str, passages: list, top_k: int = 20) -> list:
+def _rerank(query: str, passages: list, top_k: int = 20, max_length: int = 8192) -> list:
     import torch
     model, tok, device = _load()
     texts = [p.get("snippet", "") or p.get("title", "") for p in passages]
     pairs = [[query, t] for t in texts]
-    inputs = tok(pairs, padding=True, truncation=True, return_tensors="pt", max_length=512).to(device)
-    with torch.no_grad():
-        scores = model(**inputs).logits.squeeze(-1).cpu().tolist()
-    if isinstance(scores, (int, float)):
-        scores = [scores]
-    scored = list(zip(passages, scores))
+    batch_size = 100
+    all_scores: list[float] = []
+    with torch.inference_mode():
+        for i in range(0, len(pairs), batch_size):
+            batch = pairs[i:i + batch_size]
+            inputs = tok(batch, padding=True, truncation=True, return_tensors="pt",
+                         max_length=max_length).to(device)
+            scores = model(**inputs).logits.squeeze(-1).cpu().tolist()
+            if isinstance(scores, (int, float)):
+                scores = [scores]
+            all_scores.extend(scores)
+    scored = list(zip(passages, all_scores))
     scored.sort(key=lambda x: x[1], reverse=True)
     return [{"score": round(s, 4), **p} for p, s in scored[:top_k]]
 
@@ -46,7 +52,8 @@ for line in sys.stdin:
         if cmd == "ping":
             json.dump({"ok": True, "model": MODEL_NAME}, sys.stdout)
         elif cmd == "rerank":
-            result = _rerank(msg["query"], msg["passages"], msg.get("top_k", 20))
+            result = _rerank(msg["query"], msg["passages"], msg.get("top_k", 20),
+                             msg.get("max_length", 8192))
             json.dump({"ok": True, "result": result}, sys.stdout)
         elif cmd == "shutdown":
             json.dump({"ok": True}, sys.stdout)
@@ -56,4 +63,5 @@ for line in sys.stdin:
             break
     except Exception as e:
         json.dump({"ok": False, "error": str(e)}, sys.stdout)
+        sys.stdout.flush()
     sys.stdout.flush()

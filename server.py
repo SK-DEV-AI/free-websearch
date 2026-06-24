@@ -11,8 +11,8 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent, Tool
 
 from config import MAX_RESULTS, HELIUM_CDP
-from search_ddg import search_ddg, ddgs_extract
-from search_exa import exa_similar
+from search_ddg import search_ddg, ddgs_extract, ddgs_maps, ddgs_translate
+from search_exa import exa_similar, exa_search
 from search_gai import GoogleAIClient, get_gai_client
 from fetch import fetch_url, scrapling_stealthy_fetch
 from crawl import crawl_url
@@ -23,10 +23,10 @@ from wikipedia import (search_wikipedia, fetch_wikipedia_summary, fetch_wikipedi
                        fetch_wikipedia_pageviews, fetch_wikipedia_revisions,
                        search_wikipedia_category, search_wikipedia_backlinks,
                        search_wikipedia_geosearch, search_wikipedia_random,
-                       search_wikipedia_recentchanges)
+                       search_wikipedia_recentchanges, fetch_wikipedia_langlinks)
 from arxiv import search_arxiv
-from search_tavily import research_tavily
-from search_firecrawl import map_firecrawl
+from search_tavily import research_tavily, tavily_extract
+from search_firecrawl import map_firecrawl, firecrawl_scrape
 from research import search_multi, enrich
 
 server = Server("free-websearch")
@@ -56,7 +56,15 @@ async def handle_list_tools() -> list[Tool]:
                 "query_expand": {"type": "boolean", "default": True},
                 "tavily_topic": {"type": "string", "enum": ["general","news","finance"], "default": "general"},
                 "tavily_depth": {"type": "string", "enum": ["basic","advanced","fast","ultra-fast"], "default": "basic"},
-                "firecrawl_sources": {"type": "string", "enum": ["","web","news","images"]}},
+                "firecrawl_sources": {"type": "string", "enum": ["","web","news","images"]},
+                "size": {"type": "string", "description": "Image size filter: icon|small|medium|large|wallpaper"},
+                "color": {"type": "string", "description": "Image color filter"},
+                "type_image": {"type": "string", "description": "Image type: photo|clipart|gif|line|shopping"},
+                "layout": {"type": "string", "description": "Image layout: square|tall|wide"},
+                "license_image": {"type": "string", "description": "Image license: creativecommons|commercial"},
+                "resolution": {"type": "string", "description": "Video resolution filter"},
+                "duration": {"type": "string", "description": "Video duration filter"},
+                "license_videos": {"type": "string", "description": "Video license filter"}},
                 "required": ["query"]}),
         Tool(name="fetch",
             description="URL to markdown/text. Use stealth=True for Cloudflare sites. Supports PDF, EPUB, DOCX.",
@@ -118,7 +126,8 @@ async def handle_list_tools() -> list[Tool]:
                  "cdp_url": {"type": "string"}, "adjust_viewport_to_content": {"type": "boolean"},
                   "log_console": {"type": "boolean"},
                   "content_filter": {"type": "string", "enum": ["","pruning","bm25","bm25_hq"]},
-                  "filter_query": {"type": "string"}},
+                  "filter_query": {"type": "string"},
+                  "css_extract": {"type": "object", "description": "JSON CSS extraction schema with 'name' and 'selector' keys. Uses JsonCssExtractionStrategy instead of markdown generator.", "properties": {"name": {"type": "string"}, "selector": {"type": "string"}}}},
                   "required": ["url"]}),
         Tool(name="screenshot",
             description="CDP screenshot or ARIA accessibility snapshot.",
@@ -138,7 +147,7 @@ async def handle_list_tools() -> list[Tool]:
         Tool(name="wikipedia",
             description="Search Wikipedia: articles, summaries, geosearch, random. Actions: search, summary (REST API v1 fast), summary_action (Action API with images/sections), categories, links, extlinks, categorymembers, pageviews, revisions, backlinks, recentchanges.",
             inputSchema={"type": "object", "properties": {
-                "action": {"type": "string", "enum": ["search","summary","summary_action","geosearch","random","categories","links","extlinks","categorymembers","pageviews","revisions","backlinks","recentchanges"], "default": "search"},
+                "action": {"type": "string", "enum": ["search","summary","summary_action","geosearch","random","categories","links","extlinks","categorymembers","pageviews","revisions","backlinks","recentchanges","langlinks"], "default": "search"},
                 "query": {"type": "string"},
                 "count": {"type": "integer", "default": 3},
                 "language": {"type": "string", "default": "en"},
@@ -193,9 +202,11 @@ async def handle_list_tools() -> list[Tool]:
                  "category": {"type": "string", "description": "Category filter: company, research paper, news, tweet, movie, song, personal site, pdf"},
                  "system_prompt": {"type": "string", "description": "Custom system prompt for Exa"},
                  "output_schema": {"type": "object", "description": "JSON schema for structured output"},
-                 "stream": {"type": "boolean", "description": "Stream results"},
-                  "user_location": {"type": "string", "description": "User location for localized results"}},
-                  "required": ["url"]}),
+                  "stream": {"type": "boolean", "description": "Stream results"},
+                   "user_location": {"type": "string", "description": "User location for localized results"},
+                   "start_published_date": {"type": "string", "description": "Filter results published after this date (YYYY-MM-DD)"},
+                   "end_published_date": {"type": "string", "description": "Filter results published before this date (YYYY-MM-DD)"}},
+                   "required": ["url"]}),
          Tool(name="ddgs_extract",
             description="Lightweight URL content extraction via DuckDuckGo's extract endpoint. Faster than fetch for simple pages — markdown or plain text. Best for search snippets and quick page reads where trafilatura is overkill.",
             inputSchema={"type": "object", "properties": {
@@ -220,8 +231,56 @@ async def handle_list_tools() -> list[Tool]:
                 "image_output": {"type": "string", "enum": ["", "placeholders", "embedded"], "description": "Image handling in output"},
                 "sanitize": {"type": "boolean", "description": "Sanitize output (remove problematic chars)"},
                 "keep_line_breaks": {"type": "boolean", "description": "Preserve original line breaks"},
-                "markdown_with_html": {"type": "boolean", "description": "Fall back to HTML for complex elements in markdown"}},
+                "markdown_with_html": {"type": "boolean", "description": "Fall back to HTML for complex elements in markdown"},
+                "image_format": {"type": "string", "description": "Image format: png, jpg, etc."},
+                "image_scale": {"type": "number", "description": "Image scale factor for extraction"}},
                 "required": ["input_path"]}),
+        Tool(name="exa_search",
+            description="Exa search — find content across the web by semantic query. Supports domain filtering and date ranges.",
+            inputSchema={"type": "object", "properties": {
+                "query": {"type": "string"},
+                "num_results": {"type": "integer", "default": 10},
+                "search_type": {"type": "string", "enum": ["auto","keyword","neural","magic"], "default": "auto"},
+                "include_domains": {"type": "array", "items": {"type": "string"}},
+                "exclude_domains": {"type": "array", "items": {"type": "string"}},
+                "start_published_date": {"type": "string", "description": "Filter results published after this date (YYYY-MM-DD)"},
+                "end_published_date": {"type": "string", "description": "Filter results published before this date (YYYY-MM-DD)"},
+                "highlights": {"type": "boolean"},
+                "summary": {"type": "boolean"}},
+                "required": ["query"]}),
+        Tool(name="tavily_extract",
+            description="Tavily Extract — pull content from specific URLs via Tavily API. Returns raw content and metadata.",
+            inputSchema={"type": "object", "properties": {
+                "urls": {"type": "array", "items": {"type": "string"}, "description": "URLs to extract (max 10)"},
+                "include_images": {"type": "boolean", "default": False}},
+                "required": ["urls"]}),
+        Tool(name="firecrawl_scrape",
+            description="Firecrawl Scrape — extract content from a single URL with fine-grained control over extraction.",
+            inputSchema={"type": "object", "properties": {
+                "url": {"type": "string"},
+                "formats": {"type": "array", "items": {"type": "string"}, "default": ["markdown"], "description": "Output formats: markdown, html, etc."},
+                "onlyMainContent": {"type": "boolean", "default": True},
+                "includeTags": {"type": "array", "items": {"type": "string"}},
+                "excludeTags": {"type": "array", "items": {"type": "string"}},
+                "waitFor": {"type": "string", "description": "CSS selector to wait for before extraction"},
+                "actions": {"type": "array", "items": {"type": "object"}, "description": "Browser actions to perform before extraction"},
+                "timeout": {"type": "integer", "default": 30000}},
+                "required": ["url"]}),
+        Tool(name="ddgs_maps",
+            description="DuckDuckGo Maps — find local places and businesses.",
+            inputSchema={"type": "object", "properties": {
+                "q": {"type": "string", "description": "Search query for places"},
+                "place": {"type": "string", "description": "Place name to search in"},
+                "lat": {"type": "number", "description": "Latitude for location-based search"},
+                "lng": {"type": "number", "description": "Longitude for location-based search"},
+                "radius": {"type": "integer", "description": "Search radius in meters"}},
+                "required": ["q"]}),
+        Tool(name="ddgs_translate",
+            description="DuckDuckGo Translate — translate text between languages.",
+            inputSchema={"type": "object", "properties": {
+                "text": {"type": "string", "description": "Text to translate"},
+                "to": {"type": "string", "default": "en", "description": "Target language code"}},
+                "required": ["text"]}),
     ]
 
 
@@ -271,6 +330,14 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 tavily_topic=str(arguments.get("tavily_topic","general")),
                 tavily_depth=str(arguments.get("tavily_depth","basic")),
                 firecrawl_sources=str(arguments.get("firecrawl_sources","")),
+                size=str(arguments.get("size","")),
+                color=str(arguments.get("color","")),
+                type_image=str(arguments.get("type_image","")),
+                layout=str(arguments.get("layout","")),
+                license_image=str(arguments.get("license_image","")),
+                resolution=str(arguments.get("resolution","")),
+                duration=str(arguments.get("duration","")),
+                license_videos=str(arguments.get("license_videos","")),
                 cdp_url=HELIUM_CDP)
             if r.get("success") and depth >= 2 and r.get("results"):
                 fetched = await enrich(r["results"], query, depth=depth,
@@ -368,7 +435,8 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 adjust_viewport_to_content=bool(arguments.get("adjust_viewport_to_content",False)),
                 log_console=bool(arguments.get("log_console",False)),
                 content_filter=str(arguments.get("content_filter","")),
-                filter_query=str(arguments.get("filter_query","")))
+                filter_query=str(arguments.get("filter_query","")),
+                css_extract=arguments.get("css_extract"))
             return _res(r)
         elif name == "screenshot":
             url = arguments["url"]
@@ -446,8 +514,12 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 r = await search_wikipedia_random(count=safe_int(arguments.get("count",5)),
                     language=str(arguments.get("language","en")))
                 return _res({"success": True, "results": r})
+            if action == "langlinks":
+                r = await fetch_wikipedia_langlinks(title=q, language=lang, count=cnt)
+                return _res({"success": True, "results": r})
             r = await search_wikipedia(query=q,
                 count=cnt, language=lang)
+            return _res({"success": True, "results": r})
         elif name == "arxiv":
             r = await search_arxiv(query=str(arguments.get("query","")),
                 count=safe_int(arguments.get("count",3)),
@@ -483,7 +555,10 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 category=str(arguments.get("category","")),
                 system_prompt=str(arguments.get("system_prompt","")),
                 output_schema=arguments.get("output_schema"),
-                user_location=str(arguments.get("user_location","")))
+                stream=bool(arguments.get("stream",False)),
+                user_location=str(arguments.get("user_location","")),
+                start_published_date=str(arguments.get("start_published_date","")),
+                end_published_date=str(arguments.get("end_published_date","")))
             return _res({"success": True, "results": r})
         elif name == "ddgs_extract":
             r = await ddgs_extract(url=str(arguments.get("url", "")),
@@ -514,10 +589,50 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 table_method=str(arguments.get("table_method", "")),
                 reading_order=str(arguments.get("reading_order", "")),
                 image_output=str(arguments.get("image_output", "")),
+                image_format=str(arguments.get("image_format", "")),
                 sanitize=bool(arguments.get("sanitize", False)),
                 keep_line_breaks=bool(arguments.get("keep_line_breaks", False)),
                 markdown_with_html=bool(arguments.get("markdown_with_html", False)))
             return _res(r)
+        elif name == "exa_search":
+            r = await exa_search(query=str(arguments.get("query","")),
+                num_results=safe_int(arguments.get("num_results",10)),
+                search_type=str(arguments.get("search_type","auto")),
+                include_domains=arguments.get("include_domains"),
+                exclude_domains=arguments.get("exclude_domains"),
+                start_published_date=str(arguments.get("start_published_date","")),
+                end_published_date=str(arguments.get("end_published_date","")),
+                highlights=bool(arguments.get("highlights",False)),
+                summary=bool(arguments.get("summary",False)))
+            return _res({"success": True, "results": r})
+        elif name == "tavily_extract":
+            urls = arguments.get("urls", [])
+            if isinstance(urls, str):
+                urls = [urls]
+            r = await tavily_extract(urls=urls,
+                include_images=bool(arguments.get("include_images",False)))
+            return _res({"success": True, "results": r})
+        elif name == "firecrawl_scrape":
+            r = await firecrawl_scrape(url=str(arguments.get("url","")),
+                formats=arguments.get("formats"),
+                only_main_content=bool(arguments.get("onlyMainContent",True)),
+                include_tags=arguments.get("includeTags"),
+                exclude_tags=arguments.get("excludeTags"),
+                wait_for=str(arguments.get("waitFor","")),
+                actions=arguments.get("actions"),
+                timeout=safe_int(arguments.get("timeout",30000)))
+            return _res(r)
+        elif name == "ddgs_maps":
+            r = await ddgs_maps(q=str(arguments.get("q","")),
+                place=str(arguments.get("place","")),
+                lat=safe_float(arguments.get("lat",0)),
+                lng=safe_float(arguments.get("lng",0)),
+                radius=safe_int(arguments.get("radius",0)))
+            return _res({"success": True, "results": r})
+        elif name == "ddgs_translate":
+            r = await ddgs_translate(text=str(arguments.get("text","")),
+                to=str(arguments.get("to","en")))
+            return _res({"success": True, "result": r} if r else {"success": False, "error": "Translation failed"})
         else:
             return CallToolResult(content=[TextContent(type="text", text=f"Unknown tool: {name}")], isError=True)
     except ValueError as e:

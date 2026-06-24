@@ -35,7 +35,11 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                        upload_urls: list[str] | None = None,
                        query_expand: bool = True,
                        tavily_topic: str = "general", tavily_depth: str = "basic",
-                       firecrawl_sources: str = "") -> dict:
+                       firecrawl_sources: str = "",
+                       size: str = "", color: str = "", type_image: str = "",
+                       layout: str = "", license_image: str = "",
+                       resolution: str = "", duration: str = "",
+                       license_videos: str = "") -> dict:
     import urllib.parse
     engines_used: list[str] = []
     results: list[dict] = []
@@ -94,7 +98,10 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
 
         ddg_tasks = {f"ddg_{i}": asyncio.create_task(_ddg_with_breaker(
             q, ddg_count, search_type=search_type, backend=backend,
-            timelimit=timelimit, page=page, region=region, safesearch=safesearch))
+            timelimit=timelimit, page=page, region=region, safesearch=safesearch,
+            size=size, color=color, type_image=type_image, layout=layout,
+            license_image=license_image, resolution=resolution, duration=duration,
+            license_videos=license_videos))
             for i, q in enumerate(queries)}
 
         tasks = {
@@ -190,17 +197,19 @@ async def enrich(results: list[dict], query: str, depth: int = 3,
     fetched = await asyncio.gather(
         *[fetch_url(url, max_chars=3000, fast=True) for url in urls], return_exceptions=True)
     fetched = [f for f in fetched if isinstance(f, dict) and f.get("success")]
+    wiki_summary = None
     for i, r in enumerate(results[:5]):
         url = r.get("url", "")
         if not url or "wikipedia.org" not in url:
             continue
-        summary = await fetch_wikipedia_summary_rest(query, language=language)
-        if summary:
+        if wiki_summary is None:
+            wiki_summary = await fetch_wikipedia_summary_rest(query, language=language)
+        if wiki_summary:
             for f in fetched:
                 if f.get("url") == url:
                     f.setdefault("content", "")
                     content = f["content"]
-                    summary_text = summary.get("extract", "")
+                    summary_text = wiki_summary.get("extract", "")
                     if summary_text and len(summary_text) > len(content):
                         f["content"] = summary_text + "\n\n" + content
                     break
