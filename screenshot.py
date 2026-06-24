@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import asyncio
+import base64
+import os
+import tempfile
+import time
+
+from search_gai import _get_optimized_page
+
+
+async def cdpa11y_snapshot(url: str, verbose: bool = False, max_chars: int = 10000,
+                           depth: int | None = None, boxes: bool = False) -> dict:
+    try:
+        page = await _get_optimized_page(block_resources=False)
+        try:
+            await page.goto(url, wait_until="commit", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+            await asyncio.sleep(0.3)
+            snap_kwargs: dict = {"mode": "ai"}
+            if depth is not None:
+                snap_kwargs["depth"] = depth
+            if boxes:
+                snap_kwargs["boxes"] = True
+            snap = await page.aria_snapshot(**snap_kwargs)
+            if not snap or not snap.strip():
+                html_c = await page.evaluate("document.documentElement.outerHTML")
+                return {"success": True, "url": url, "snapshot": "", "note": "no aria snapshot",
+                        "fallback_html_len": len(html_c)}
+            if not verbose:
+                roles = ["- link", "- button", "- textbox", "- searchbox", "- combobox",
+                         "- checkbox", "- radio", "- switch", "- slider", "- tab",
+                         "- menuitem", "- option", "- heading", "- listitem",
+                         "- treeitem", "- spinbutton", "- img", "- navigation",
+                         "- banner", "- main", "- complementary", "- form",
+                         "- search", "- region"]
+                snap = "\n".join(
+                    l for l in snap.split("\n")
+                    if any(l.strip().startswith(r) for r in roles) or
+                    (not l.strip().startswith("-") and l.strip()))
+            if len(snap) > max_chars:
+                snap = snap[:max_chars] + f"\n... [truncated at {max_chars} chars]"
+            return {"success": True, "url": url, "snapshot": snap}
+        finally:
+            try:
+                await page.close()
+            except Exception:
+                pass
+    except Exception as e:
+        return {"success": False, "url": url, "error": str(e)}
+
+
+async def screenshot_cdp(url: str, full_page: bool = True,
+                         clip_x: float = 0, clip_y: float = 0,
+                         clip_width: float = 0, clip_height: float = 0,
+                         scale: str = "css", animations: str = "allow",
+                         quality: int | None = None,
+                         image_type: str = "png") -> dict:
+    try:
+        page = await _get_optimized_page(block_resources=True)
+        try:
+            await page.goto(url, wait_until="commit", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+            await asyncio.sleep(0.3)
+            ss_kwargs: dict = {"full_page": full_page, "type": image_type, "timeout": 30000}
+            if clip_width > 0 and clip_height > 0:
+                ss_kwargs["clip"] = {"x": clip_x, "y": clip_y,
+                                     "width": clip_width, "height": clip_height}
+            if scale in ("css", "device"):
+                ss_kwargs["scale"] = scale
+            if animations in ("allow", "disabled"):
+                ss_kwargs["animations"] = animations
+            if quality is not None and image_type == "jpeg":
+                ss_kwargs["quality"] = quality
+            b64 = await page.screenshot(**ss_kwargs)
+            if not b64:
+                return {"success": False, "url": url, "error": "no screenshot captured"}
+            encoded = base64.b64encode(b64).decode("utf-8")
+            if len(encoded) > 2_000_000:
+                fp = os.path.join(tempfile.gettempdir(), f"ss_{int(time.monotonic())}.{image_type}")
+                with open(fp, "wb") as f:
+                    f.write(b64)
+                return {"success": True, "url": url,
+                        "screenshot_base64": f"[saved to {fp} ({len(b64)//1024}KB)]"}
+            return {"success": True, "url": url, "screenshot_base64": encoded}
+        finally:
+            try:
+                await page.close()
+            except Exception:
+                pass
+    except Exception as e:
+        return {"success": False, "url": url, "error": str(e)}
