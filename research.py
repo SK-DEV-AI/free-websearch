@@ -39,7 +39,9 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                        size: str = "", color: str = "", type_image: str = "",
                        layout: str = "", license_image: str = "",
                        resolution: str = "", duration: str = "",
-                       license_videos: str = "") -> dict:
+                       license_videos: str = "",
+                       start_date: str = "", end_date: str = "",
+                       exact_phrase: bool = False) -> dict:
     import urllib.parse
     engines_used: list[str] = []
     results: list[dict] = []
@@ -108,7 +110,8 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             "rss": asyncio.create_task(search_google_rss(query, count, region=region)),
             "firecrawl": asyncio.create_task(search_firecrawl(query, n=count, sources=firecrawl_sources, tbs=tbs, country=country)),
             "tavily": asyncio.create_task(search_tavily(query, n=count, topic=tavily_topic,
-                time_range=tbs, search_depth=tavily_depth, include_raw_content=True)),
+                time_range=tbs, search_depth=tavily_depth, include_raw_content=True,
+                start_date=start_date, end_date=end_date, exact_phrase=exact_phrase)),
             "wiki": asyncio.create_task(search_wikipedia(query, count=min(count, 5), language=language)),
             "arxiv": asyncio.create_task(search_arxiv(query, count=min(count, 3), category=country)),
             **ddg_tasks,

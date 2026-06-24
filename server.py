@@ -11,7 +11,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent, Tool
 
 from config import MAX_RESULTS, HELIUM_CDP
-from search_ddg import search_ddg, ddgs_extract, ddgs_maps, ddgs_translate
+from search_ddg import search_ddg, ddgs_extract
 from search_exa import exa_similar, exa_search
 from search_gai import GoogleAIClient, get_gai_client
 from fetch import fetch_url, scrapling_stealthy_fetch
@@ -23,10 +23,11 @@ from wikipedia import (search_wikipedia, fetch_wikipedia_summary, fetch_wikipedi
                        fetch_wikipedia_pageviews, fetch_wikipedia_revisions,
                        search_wikipedia_category, search_wikipedia_backlinks,
                        search_wikipedia_geosearch, search_wikipedia_random,
-                       search_wikipedia_recentchanges, fetch_wikipedia_langlinks)
+                       search_wikipedia_recentchanges, fetch_wikipedia_langlinks,
+                       search_wikipedia_allpages)
 from arxiv import search_arxiv
 from search_tavily import research_tavily, tavily_extract
-from search_firecrawl import map_firecrawl, firecrawl_scrape
+from search_firecrawl import map_firecrawl, firecrawl_scrape, firecrawl_research
 from research import search_multi, enrich
 
 server = Server("free-websearch")
@@ -64,7 +65,10 @@ async def handle_list_tools() -> list[Tool]:
                 "license_image": {"type": "string", "description": "Image license: creativecommons|commercial"},
                 "resolution": {"type": "string", "description": "Video resolution filter"},
                 "duration": {"type": "string", "description": "Video duration filter"},
-                "license_videos": {"type": "string", "description": "Video license filter"}},
+                "license_videos": {"type": "string", "description": "Video license filter"},
+                "start_date": {"type": "string", "description": "Tavily date filter start (YYYY-MM-DD)"},
+                "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"},
+                "exact_phrase": {"type": "boolean", "description": "Tavily exact phrase matching"}},
                 "required": ["query"]}),
         Tool(name="fetch",
             description="URL to markdown/text. Use stealth=True for Cloudflare sites. Supports PDF, EPUB, DOCX.",
@@ -95,7 +99,8 @@ async def handle_list_tools() -> list[Tool]:
                  "blocked_domains": {"type": "array", "items": {"type": "string"}},
                  "init_script": {"type": "string", "description": "JS inject on load"},
                  "extra_headers": {"type": "object", "description": "Extra HTTP headers"},
-                 "useragent": {"type": "string"}, "load_dom": {"type": "boolean"}},
+                  "useragent": {"type": "string"}, "load_dom": {"type": "boolean"},
+                 },
                  "required": ["url"]}),
         Tool(name="crawl",
             description="BFS/DFS deep crawl. Returns per-page markdown + combined text.",
@@ -125,7 +130,7 @@ async def handle_list_tools() -> list[Tool]:
                  "simulate_user": {"type": "boolean", "default": True}, "override_navigator": {"type": "boolean", "default": True},
                  "cdp_url": {"type": "string"}, "adjust_viewport_to_content": {"type": "boolean"},
                   "log_console": {"type": "boolean"},
-                  "content_filter": {"type": "string", "enum": ["","pruning","bm25","bm25_hq"]},
+                   "content_filter": {"type": "string", "enum": ["","pruning","bm25","bm25_hq","cosine"]},
                   "filter_query": {"type": "string"},
                   "css_extract": {"type": "object", "description": "JSON CSS extraction schema with 'name' and 'selector' keys. Uses JsonCssExtractionStrategy instead of markdown generator.", "properties": {"name": {"type": "string"}, "selector": {"type": "string"}}}},
                   "required": ["url"]}),
@@ -147,7 +152,7 @@ async def handle_list_tools() -> list[Tool]:
         Tool(name="wikipedia",
             description="Search Wikipedia: articles, summaries, geosearch, random. Actions: search, summary (REST API v1 fast), summary_action (Action API with images/sections), categories, links, extlinks, categorymembers, pageviews, revisions, backlinks, recentchanges.",
             inputSchema={"type": "object", "properties": {
-                "action": {"type": "string", "enum": ["search","summary","summary_action","geosearch","random","categories","links","extlinks","categorymembers","pageviews","revisions","backlinks","recentchanges","langlinks"], "default": "search"},
+                "action": {"type": "string", "enum": ["search","summary","summary_action","geosearch","random","categories","links","extlinks","categorymembers","pageviews","revisions","backlinks","recentchanges","langlinks","allpages"], "default": "search"},
                 "query": {"type": "string"},
                 "count": {"type": "integer", "default": 3},
                 "language": {"type": "string", "default": "en"},
@@ -157,7 +162,7 @@ async def handle_list_tools() -> list[Tool]:
                 "category": {"type": "string", "description": "Category name for categorymembers action (without Category: prefix)"},
                 "days": {"type": "integer", "default": 30, "description": "Days of pageview data (pageviews action)"},
                 "type_filter": {"type": "string", "description": "Change type filter for recentchanges: edit|new|log"},
-                "namespace": {"type": "integer", "default": 0, "description": "Namespace filter (links, random)"}},
+                "namespace": {"type": "integer", "default": 0, "description": "Namespace filter (links, random, search, allpages)"}},
                 "required": []}),
         Tool(name="arxiv",
             description="Search arXiv academic papers. Use raw_query for boolean operators (AND, OR, ANDNOT), phrase search (ti:\"exact phrase\"), wildcards (au:smith*).",
@@ -266,21 +271,19 @@ async def handle_list_tools() -> list[Tool]:
                 "actions": {"type": "array", "items": {"type": "object"}, "description": "Browser actions to perform before extraction"},
                 "timeout": {"type": "integer", "default": 30000}},
                 "required": ["url"]}),
-        Tool(name="ddgs_maps",
-            description="DuckDuckGo Maps — find local places and businesses.",
+        Tool(name="firecrawl_research",
+            description="Firecrawl Research — search academic papers, read passages, find related papers. Uses Firecrawl's research index for AI/ML papers.",
             inputSchema={"type": "object", "properties": {
-                "q": {"type": "string", "description": "Search query for places"},
-                "place": {"type": "string", "description": "Place name to search in"},
-                "lat": {"type": "number", "description": "Latitude for location-based search"},
-                "lng": {"type": "number", "description": "Longitude for location-based search"},
-                "radius": {"type": "integer", "description": "Search radius in meters"}},
-                "required": ["q"]}),
-        Tool(name="ddgs_translate",
-            description="DuckDuckGo Translate — translate text between languages.",
-            inputSchema={"type": "object", "properties": {
-                "text": {"type": "string", "description": "Text to translate"},
-                "to": {"type": "string", "default": "en", "description": "Target language code"}},
-                "required": ["text"]}),
+                "query": {"type": "string", "description": "Natural-language query to search papers"},
+                "action": {"type": "string", "enum": ["search","detail","similar","github"], "default": "search",
+                    "description": "search=find papers, detail=read paper metadata/passages, similar=find related papers, github=search GitHub"},
+                "paper_id": {"type": "string", "description": "Paper ID for detail/similar actions (paperId or primaryId)"},
+                "authors": {"type": "string", "description": "Author substring filter (search only)"},
+                "categories": {"type": "string", "description": "Paper category filter e.g. cs.LG (search only)"},
+                "from_date": {"type": "string", "description": "Inclusive lower bound YYYY-MM-DD (search only)"},
+                "to_date": {"type": "string", "description": "Inclusive upper bound YYYY-MM-DD (search only)"},
+                "limit": {"type": "integer", "default": 10}},
+                "required": ["query"]}),
     ]
 
 
@@ -338,6 +341,9 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 resolution=str(arguments.get("resolution","")),
                 duration=str(arguments.get("duration","")),
                 license_videos=str(arguments.get("license_videos","")),
+                start_date=str(arguments.get("start_date","")),
+                end_date=str(arguments.get("end_date","")),
+                exact_phrase=bool(arguments.get("exact_phrase",False)),
                 cdp_url=HELIUM_CDP)
             if r.get("success") and depth >= 2 and r.get("results"):
                 fetched = await enrich(r["results"], query, depth=depth,
@@ -517,8 +523,15 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
             if action == "langlinks":
                 r = await fetch_wikipedia_langlinks(title=q, language=lang, count=cnt)
                 return _res({"success": True, "results": r})
+            if action == "allpages":
+                r = await search_wikipedia_allpages(
+                    namespace=safe_int(arguments.get("namespace", 0)),
+                    limit=safe_int(arguments.get("count", 50)),
+                    language=lang)
+                return _res({"success": True, "results": r})
             r = await search_wikipedia(query=q,
-                count=cnt, language=lang)
+                count=cnt, language=lang,
+                namespace=safe_int(arguments.get("namespace", 0)))
             return _res({"success": True, "results": r})
         elif name == "arxiv":
             r = await search_arxiv(query=str(arguments.get("query","")),
@@ -622,17 +635,17 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 actions=arguments.get("actions"),
                 timeout=safe_int(arguments.get("timeout",30000)))
             return _res(r)
-        elif name == "ddgs_maps":
-            r = await ddgs_maps(q=str(arguments.get("q","")),
-                place=str(arguments.get("place","")),
-                lat=safe_float(arguments.get("lat",0)),
-                lng=safe_float(arguments.get("lng",0)),
-                radius=safe_int(arguments.get("radius",0)))
-            return _res({"success": True, "results": r})
-        elif name == "ddgs_translate":
-            r = await ddgs_translate(text=str(arguments.get("text","")),
-                to=str(arguments.get("to","en")))
-            return _res({"success": True, "result": r} if r else {"success": False, "error": "Translation failed"})
+        elif name == "firecrawl_research":
+            r = await firecrawl_research(
+                query=str(arguments.get("query","")),
+                action=str(arguments.get("action","search")),
+                paper_id=str(arguments.get("paper_id","")),
+                authors=str(arguments.get("authors","")),
+                categories=str(arguments.get("categories","")),
+                from_date=str(arguments.get("from_date","")),
+                to_date=str(arguments.get("to_date","")),
+                limit=safe_int(arguments.get("limit", 10)))
+            return _res({"success": True, "results": r} if r else {"success": False, "error": "No results"})
         else:
             return CallToolResult(content=[TextContent(type="text", text=f"Unknown tool: {name}")], isError=True)
     except ValueError as e:

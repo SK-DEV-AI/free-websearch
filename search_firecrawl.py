@@ -9,6 +9,8 @@ from config import _next_firecrawl_key
 FIRECRAWL_SEARCH = "https://api.firecrawl.dev/v2/search"
 FIRECRAWL_MAP = "https://api.firecrawl.dev/v2/map"
 FIRECRAWL_SCRAPE = "https://api.firecrawl.dev/v2/scrape"
+FIRECRAWL_RESEARCH_PAPERS = "https://api.firecrawl.dev/v2/search/research/papers"
+FIRECRAWL_RESEARCH_GITHUB = "https://api.firecrawl.dev/v2/search/research/github"
 
 
 async def search_firecrawl(query: str, n: int = 10, sources: str = "",
@@ -123,3 +125,70 @@ async def firecrawl_scrape(url: str, formats: list[str] | None = None,
                 "source": "firecrawl-scrape"}
     except (httpx.HTTPError, ValueError) as e:
         return {"success": False, "error": str(e)}
+
+
+async def firecrawl_research(query: str, action: str = "search",
+                              paper_id: str = "", authors: str = "",
+                              categories: str = "", from_date: str = "",
+                              to_date: str = "", limit: int = 10) -> list[dict]:
+    """Firecrawl Research — search academic papers, inspect metadata, find related papers."""
+    key = _next_firecrawl_key()
+    if not key:
+        return []
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            if action == "github":
+                params: dict[str, Any] = {"q": query, "limit": min(limit, 20)}
+                r = await c.get(FIRECRAWL_RESEARCH_GITHUB, params=params, headers=headers)
+                if r.status_code != 200:
+                    return []
+                data = r.json()
+                return [{"title": item.get("name", ""), "url": item.get("url", ""),
+                         "snippet": (item.get("description", "") or "")[:500],
+                         "stars": item.get("stars", 0), "language": item.get("language", "")}
+                        for item in (data.get("data", []) or [])]
+            elif action == "detail" and paper_id:
+                r = await c.get(f"{FIRECRAWL_RESEARCH_PAPERS}/{paper_id}", headers=headers)
+                if r.status_code != 200:
+                    return []
+                data = r.json()
+                paper = data.get("data", data)
+                return [{"paperId": paper.get("paperId", ""), "title": paper.get("title", ""),
+                         "abstract": (paper.get("abstract", "") or "")[:2000],
+                         "authors": paper.get("authors", []),
+                         "categories": paper.get("categories", []),
+                         "primaryId": paper.get("primaryId", "")}]
+            elif action == "similar" and paper_id:
+                params = {"intent": query, "limit": min(limit, 20)}
+                r = await c.get(f"{FIRECRAWL_RESEARCH_PAPERS}/{paper_id}/similar",
+                                params=params, headers=headers)
+                if r.status_code != 200:
+                    return []
+                data = r.json()
+                return [{"paperId": item.get("paperId", ""), "title": item.get("title", ""),
+                         "abstract": (item.get("abstract", "") or "")[:500],
+                         "score": item.get("score", 0)}
+                        for item in (data.get("data", []) or [])]
+            else:
+                params = {"q": query, "limit": min(limit, 20)}
+                if authors:
+                    params["authors"] = authors
+                if categories:
+                    params["categories"] = categories
+                if from_date:
+                    params["from"] = from_date
+                if to_date:
+                    params["to"] = to_date
+                r = await c.get(FIRECRAWL_RESEARCH_PAPERS, params=params, headers=headers)
+                if r.status_code != 200:
+                    return []
+                data = r.json()
+                return [{"paperId": item.get("paperId", ""), "title": item.get("title", ""),
+                         "abstract": (item.get("abstract", "") or "")[:500],
+                         "authors": item.get("authors", []),
+                         "categories": item.get("categories", []),
+                         "score": item.get("score", 0)}
+                        for item in (data.get("data", []) or [])]
+    except (httpx.HTTPError, ValueError):
+        return []

@@ -8,6 +8,7 @@ from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter, BM25ContentFilter
 from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
+from crawl4ai import CosineStrategy
 from embed import _embed, _cosine_sim
 
 
@@ -81,12 +82,17 @@ async def crawl_url(
         run_kw["extraction_strategy"] = JsonCssExtractionStrategy(
             schema=css_extract)
     if content_filter:
-        cf_map = {"pruning": PruningContentFilter(threshold=word_count_threshold / 100, threshold_type="dynamic"),
-                  "bm25": BM25ContentFilter(user_query=filter_query, threshold=0.15),
-                  "bm25_hq": BM25ContentFilter(user_query=filter_query, threshold=0.1, perform_stemming=True)}
-        cf = cf_map.get(content_filter)
-        if cf:
-            run_kw["markdown_generator"] = DefaultMarkdownGenerator(content_filter=cf)
+        if content_filter == "cosine":
+            if filter_query:
+                run_kw["extraction_strategy"] = CosineStrategy(
+                    semantic_filter=filter_query)
+        else:
+            cf_map = {"pruning": PruningContentFilter(threshold=word_count_threshold / 100, threshold_type="dynamic"),
+                      "bm25": BM25ContentFilter(user_query=filter_query, threshold=0.15),
+                      "bm25_hq": BM25ContentFilter(user_query=filter_query, threshold=0.1, perform_stemming=True)}
+            cf = cf_map.get(content_filter)
+            if cf:
+                run_kw["markdown_generator"] = DefaultMarkdownGenerator(content_filter=cf)
     if js_code:
         run_kw["js_code"] = js_code
     if wait_for:

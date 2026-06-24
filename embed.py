@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import math
+import struct
 from typing import Any
 
 import httpx
@@ -26,14 +28,14 @@ async def _next_nv_key() -> str:
 
 
 async def _embed(texts: list[str], input_type: str = "passage",
-                 embed_model: str = "") -> list[list[float]] | None:
+                 embed_model: str = "", encoding_format: str = "float") -> list[list[float]] | None:
     if not _NV_KEYS:
         return None
     results: list[list[float] | None] = [None] * len(texts)
     uncached = []
     uncached_idx = []
     for i, t in enumerate(texts):
-        k = f"emb:{input_type}:{t[:200]}"
+        k = f"emb:{input_type}:{encoding_format}:{t[:200]}"
         entry = _cached(k)
         if entry is not None:
             results[i] = entry
@@ -43,21 +45,26 @@ async def _embed(texts: list[str], input_type: str = "passage",
     if uncached:
         nv_key = await _next_nv_key()
         model = embed_model or NV_EMBED_MODEL
+        body_payload: dict[str, Any] = {
+            "model": model, "input": uncached,
+            "input_type": input_type, "encoding_format": encoding_format,
+            "truncate": "END",
+        }
         try:
             async with httpx.AsyncClient(timeout=15) as c:
-                r = await c.post(f"{NV_BASE}/embeddings", json={
-                    "model": model, "input": uncached,
-                    "input_type": input_type, "encoding_format": "float",
-                    "truncate": "END",
-                }, headers={"Authorization": f"Bearer {nv_key}"})
+                r = await c.post(f"{NV_BASE}/embeddings", json=body_payload,
+                                 headers={"Authorization": f"Bearer {nv_key}"})
             if r.status_code == 200:
                 data = r.json()
                 for idx, row in zip(range(len(uncached)), data.get("data", [])):
                     emb = row.get("embedding")
                     if emb:
+                        if encoding_format == "base64" and isinstance(emb, str):
+                            decoded = base64.b64decode(emb)
+                            emb = list(map(float, struct.unpack(f'{len(decoded)//4}f', decoded)))
                         orig_idx = uncached_idx[idx]
                         results[orig_idx] = emb
-                        _set_cache(f"emb:{input_type}:{uncached[idx][:200]}", emb)
+                        _set_cache(f"emb:{input_type}:{encoding_format}:{uncached[idx][:200]}", emb)
         except (httpx.HTTPError, ValueError, KeyError):
             pass
     final = [r for r in results if r is not None]

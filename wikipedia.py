@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import urllib.parse
+from typing import Any
 
 import httpx
 
@@ -25,10 +26,14 @@ def _clean_snippet(s: str) -> str:
     return html.unescape(s).replace('<span class="searchmatch">', "**").replace("</span>", "**")[:500]
 
 
-async def search_wikipedia(query: str, count: int = 3, language: str = "en") -> list[dict]:
+async def search_wikipedia(query: str, count: int = 3, language: str = "en",
+                           namespace: int = 0) -> list[dict]:
     try:
-        data = await _get({"action": "query", "list": "search", "srsearch": query, "format": "json",
-                           "srlimit": min(count, 10), "srprop": "snippet|titlesnippet|timestamp|sectiontitle|wordcount"})
+        params: dict[str, Any] = {"action": "query", "list": "search", "srsearch": query, "format": "json",
+                           "srlimit": min(count, 10), "srprop": "snippet|titlesnippet|timestamp|sectiontitle|wordcount"}
+        if namespace:
+            params["srnamespace"] = namespace
+        data = await _get(params, language)
         if not data:
             return []
         return [{"title": h.get("title", ""),
@@ -253,6 +258,27 @@ async def search_wikipedia_random(count: int = 5, language: str = "en",
                  "url": _page_url(h.get("title", ""), language),
                  "source": "wikipedia-random", "pageid": h.get("id", 0)}
                 for h in data.get("query", {}).get("random", [])]
+    except Exception:
+        return []
+
+
+async def search_wikipedia_allpages(namespace: int = 0, limit: int = 50,
+                                     language: str = "en",
+                                     apfrom: str = "") -> list[dict]:
+    """Enumerate pages in a namespace via action=query&list=allpages."""
+    try:
+        params: dict[str, Any] = {"action": "query", "list": "allpages",
+                                   "apnamespace": namespace,
+                                   "aplimit": min(limit, 500), "format": "json"}
+        if apfrom:
+            params["apfrom"] = apfrom
+        data = await _get(params, language)
+        if not data:
+            return []
+        return [{"title": p.get("title", ""),
+                 "url": _page_url(p.get("title", ""), language),
+                 "pageid": p.get("pageid", 0), "ns": p.get("ns", 0)}
+                for p in data.get("query", {}).get("allpages", [])]
     except Exception:
         return []
 
