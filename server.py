@@ -586,8 +586,8 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
 async def _warmup_reranker():
     """Pre-load reranker model in background to avoid cold-start delay."""
     try:
-        from reranker import rerank
-        await rerank("warmup", [{"title": "warmup", "snippet": "warmup"}], top_k=1)
+        from reranker import warmup
+        await warmup()
     except Exception:
         pass
 

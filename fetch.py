@@ -186,6 +186,11 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
         if not content:
             content = trafilatura.extract(raw_html, output_format='txt',
                                           with_metadata=False) or ''
+        if not content.strip():
+            try:
+                content = (resp.get_all_text() or '').strip()
+            except Exception:
+                content = raw_html.strip()
         clean = content.strip()[:max_chars]
         if len(clean) == max_chars:
             clean += "\n[...truncated]"

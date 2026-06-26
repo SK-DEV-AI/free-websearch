@@ -1,129 +1,102 @@
-"""Persistent cross-encoder reranker — keeps a Python 3.12 worker subprocess alive.
-
-Features:
-- Auto-restart on subprocess crash (broken pipe, segfault, etc.)
-- Timeout protection on stdin writes and stdout reads
-- Graceful fallback: returns passages unranked on any failure
-"""
+"""Shared reranker bridge — one subprocess via Unix socket, both MCP servers connect to it."""
 
 import asyncio
 import json
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-_PYTHON = os.path.expanduser("~/.local/share/venvs/reranker/bin/python3")
-_WORKER = os.path.expanduser("~/.local/share/venvs/reranker/bin/reranker_worker.py")
+_SOCKET_PATH = "/tmp/reranker_worker.sock"
+_RERANKER_PYTHON = "/usr/bin/python3"
+_RERANKER_WORKER = os.path.expanduser("~/.local/share/reranker-rust/worker.py")
+
 _PROC = None
 _LOCK = asyncio.Lock()
-_START_ATTEMPTS = 0
-_MAX_START_ATTEMPTS = 3
+_READER = None
+_WRITER = None
 
 
-async def _start_worker():
-    """Start a new reranker worker subprocess."""
-    global _PROC, _START_ATTEMPTS
-    if _START_ATTEMPTS >= _MAX_START_ATTEMPTS:
-        logger.warning("reranker: max start attempts reached, skipping")
-        return False
+async def _ensure_worker():
+    global _PROC, _READER, _WRITER
+    if _PROC is not None and _PROC.returncode is None:
+        return True
+    try:
+        _READER, _WRITER = await asyncio.open_unix_connection(_SOCKET_PATH)
+        return True
+    except (FileNotFoundError, ConnectionRefusedError, OSError):
+        pass
     try:
         _PROC = await asyncio.create_subprocess_exec(
-            _PYTHON, _WORKER,
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            _RERANKER_PYTHON, _RERANKER_WORKER,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        _START_ATTEMPTS = 0
-        return True
+        for _ in range(50):
+            try:
+                _READER, _WRITER = await asyncio.open_unix_connection(_SOCKET_PATH)
+                return True
+            except (FileNotFoundError, ConnectionRefusedError):
+                await asyncio.sleep(0.1)
+            except OSError:
+                await asyncio.sleep(0.1)
+        return False
     except Exception as e:
-        logger.warning(f"reranker: failed to start worker: {e}")
-        _START_ATTEMPTS += 1
-        _PROC = None
+        logger.warning(f"reranker: start failed: {e}")
         return False
 
 
-async def _restart_worker():
-    """Kill and restart the worker subprocess."""
-    global _PROC
-    if _PROC:
+async def warmup() -> bool:
+    """Pre-load the reranker model. Returns True if warmup succeeded."""
+    async with _LOCK:
+        global _READER, _WRITER, _PROC
+        if not await _ensure_worker():
+            return False
         try:
-            _PROC.kill()
-            await _PROC.wait()
+            req = json.dumps({"query": "warmup", "passages": [{"snippet": "warmup"}], "top_k": 1})
+            _WRITER.write((req + "\n").encode())
+            await asyncio.wait_for(_WRITER.drain(), timeout=5)
+            r = await asyncio.wait_for(_READER.readuntil(b"\n"), timeout=120)
+            result = json.loads(r)
+            return not result.get("error")
         except Exception:
-            pass
-        _PROC = None
-    return await _start_worker()
+            return False
 
 
-async def rerank(query: str, passages: list[dict], top_k: int = 20,
-                 max_length: int = 8192) -> list[dict]:
-    """Rerank passages by relevance to query. Returns passages sorted by score.
-
-    Falls back to returning passages unranked on any failure.
-    """
+async def rerank(query: str, passages: list[dict], top_k: int = 20) -> list[dict]:
     if not passages:
         return []
-
     async with _LOCK:
-        global _PROC
-
-        # Check if worker is alive, restart if needed
-        if _PROC is not None and _PROC.returncode is not None:
-            logger.info("reranker: worker died, restarting")
-            _PROC = None
-        if _PROC is None:
-            if not await _start_worker():
-                return passages[:top_k]
-
+        global _READER, _WRITER, _PROC
+        if not await _ensure_worker():
+            return passages[:top_k]
         normalized = []
         for p in passages:
             item = dict(p)
-            if "snippet" not in item and "text" in item:
-                item["snippet"] = item["text"][:2000]
-            elif "snippet" not in item and "content" in item:
-                item["snippet"] = item["content"][:2000]
+            text = item.get("snippet") or item.get("text") or item.get("content") or ""
+            item["snippet"] = text[:8000]
             normalized.append(item)
-
-        req = json.dumps({"query": query, "passages": normalized, "top_k": top_k,
-                          "max_length": max_length})
+        req = json.dumps({"query": query, "passages": normalized, "top_k": top_k})
         try:
-            _PROC.stdin.write((req + "\n").encode())
-            await asyncio.wait_for(_PROC.stdin.drain(), timeout=5)
+            _WRITER.write((req + "\n").encode())
+            await asyncio.wait_for(_WRITER.drain(), timeout=5)
         except (BrokenPipeError, OSError, asyncio.TimeoutError) as e:
-            logger.warning(f"reranker: stdin write failed: {e}")
+            logger.warning(f"reranker: write failed: {e}")
+            _WRITER = None
             _PROC = None
-            # Try one restart
-            if await _restart_worker():
-                try:
-                    _PROC.stdin.write((req + "\n").encode())
-                    await asyncio.wait_for(_PROC.stdin.drain(), timeout=5)
-                except Exception:
-                    return passages[:top_k]
-            else:
-                return passages[:top_k]
-
+            return passages[:top_k]
         try:
-            line = await asyncio.wait_for(_PROC.stdout.readline(), timeout=120)
-        except asyncio.TimeoutError:
-            logger.warning("reranker: stdout read timed out")
-            await _restart_worker()
-            return passages[:top_k]
-        except (BrokenPipeError, OSError) as e:
-            logger.warning(f"reranker: stdout read failed: {e}")
+            r = await asyncio.wait_for(_READER.readuntil(b"\n"), timeout=120)
+        except (asyncio.IncompleteReadError, ConnectionResetError, asyncio.TimeoutError) as e:
+            logger.warning(f"reranker: read failed: {e}")
+            _WRITER = None
             _PROC = None
             return passages[:top_k]
-
-        if not line:
-            logger.warning("reranker: worker closed stdout")
-            _PROC = None
-            return passages[:top_k]
-
         try:
-            result = json.loads(line)
-        except json.JSONDecodeError as e:
-            logger.warning(f"reranker: invalid JSON response: {e}")
+            result = json.loads(r)
+        except json.JSONDecodeError:
             return passages[:top_k]
-
     if result.get("error"):
         logger.warning(f"reranker error: {result['error']}")
         return passages[:top_k]
