@@ -10,7 +10,7 @@ Multi-engine web search MCP server for OpenCode. Searches DuckDuckGo, Google AI 
 - **screenshot** — CDP screenshot or ARIA accessibility snapshot
 - **wikipedia** — Search, summaries, geosearch, categories, pageviews, revisions
 - **arxiv** — Academic paper search with full metadata
-- **tavily_research** — Async multi-angle AI research agent
+- **tavily_extract** — Extract content from specific URLs via Tavily
 - **firecrawl_map** — URL structure discovery
 - **exa_similar** — Find pages similar to a URL
 - **pdf_extract** — Full PDF extraction (tables, OCR, formulas) via opendataloader-pdf

@@ -26,7 +26,7 @@ from wikipedia import (search_wikipedia, fetch_wikipedia_summary, fetch_wikipedi
                        search_wikipedia_recentchanges, fetch_wikipedia_langlinks,
                        search_wikipedia_allpages)
 from arxiv import search_arxiv
-from search_tavily import research_tavily, tavily_extract
+from search_tavily import tavily_extract
 from search_firecrawl import map_firecrawl, firecrawl_scrape, firecrawl_research
 from research import search_multi, enrich
 
@@ -114,13 +114,6 @@ async def handle_list_tools() -> list[Tool]:
                 "id_list": {"type": "string", "description": "Comma-delimited arXiv IDs"},
                 "category": {"type": "string", "description": "arXiv category filter (e.g. cs.AI, math.CO)"},
                 "raw_query": {"type": "string", "description": "Raw arXiv search_query syntax with boolean operators (AND/OR/ANDNOT), phrase, wildcards. Overrides query+search_field."}},
-                "required": ["query"]}),
-        Tool(name="tavily_research",
-            description="Tavily Research — async multi-angle AI research agent. Returns synthesis + cited sources.",
-            inputSchema={"type": "object", "properties": {
-                "query": {"type": "string"},
-                "model": {"type": "string", "enum": ["auto","mini","pro"], "default": "auto"},
-                "output_length": {"type": "string", "enum": ["short","standard","long"], "default": "standard"}},
                 "required": ["query"]}),
         Tool(name="firecrawl_map",
             description="Firecrawl Map — discover URL structure of a site. Returns {url, title, description}[].",
@@ -467,13 +460,6 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 category=str(arguments.get("category","")),
                 raw_query=str(arguments.get("raw_query","")))
             return _res({"success": True, "results": r})
-        elif name == "tavily_research":
-            r = await research_tavily(query=str(arguments.get("query","")),
-                model=str(arguments.get("model","auto")),
-                wait_seconds=safe_int(arguments.get("wait_seconds",30)),
-                output_length=str(arguments.get("output_length","standard")),
-                citation_format=str(arguments.get("citation_format","numbered")))
-            return _res(r)
         elif name == "firecrawl_map":
             r = await map_firecrawl(url=str(arguments.get("url","")),
                 search=str(arguments.get("search","")),
