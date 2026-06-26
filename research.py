@@ -8,6 +8,7 @@ from search_ddg import search_ddg, search_google_rss
 from search_exa import exa_similar
 from search_firecrawl import search_firecrawl
 from search_tavily import search_tavily
+from search_anysearch import search_anysearch
 from search_gai import get_gai_client
 from fetch import fetch_url
 from embed import _embed, _dedup_rank, _cosine_sim
@@ -114,11 +115,12 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                 start_date=start_date, end_date=end_date, exact_phrase=exact_phrase)),
             "wiki": asyncio.create_task(search_wikipedia(query, count=min(count, 5), language=language)),
             "arxiv": asyncio.create_task(search_arxiv(query, count=min(count, 3), category=country)),
+            "anysearch": asyncio.create_task(search_anysearch(query, count=min(count, 5))),
             **ddg_tasks,
         }
         done = await asyncio.gather(*tasks.values(), return_exceptions=True)
         done_map = dict(zip(tasks.keys(), done))
-        for key in ("rss", "firecrawl", "tavily", "wiki", "arxiv") + tuple(ddg_tasks.keys()):
+        for key in ("rss", "firecrawl", "tavily", "wiki", "arxiv", "anysearch") + tuple(ddg_tasks.keys()):
             val = done_map[key]
             if isinstance(val, BaseException) or not isinstance(val, list):
                 continue
@@ -128,7 +130,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                         r["engine"] = "duckduckgo" if key.startswith("ddg") else (
                             "google-news-rss" if key == "rss" else key)
                         results.append(r)
-        eng = {"rss": "google-news-rss", "firecrawl": "firecrawl", "tavily": "tavily", "wiki": "wikipedia", "arxiv": "arxiv"}
+        eng = {"rss": "google-news-rss", "firecrawl": "firecrawl", "tavily": "tavily", "wiki": "wikipedia", "arxiv": "arxiv", "anysearch": "anysearch"}
         for key, name in eng.items():
             val = done_map.get(key)
             if isinstance(val, list) and any(isinstance(r, dict) and "error" not in r for r in val):
