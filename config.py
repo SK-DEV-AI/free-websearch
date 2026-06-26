@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 import hashlib
 import json
@@ -51,25 +52,24 @@ RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "Alibaba-NLP/gte-reranker-mode
 _cache: dict[str, tuple[float, Any]] = {}
 _MAX_CACHE = 500
 _CACHE_TTL: dict[str, int] = {"emb": 600, "search": 90, "fetch": 120}
+_cache_lock = asyncio.Lock()
 
 
-def _cached(key: str) -> Any | None:
-    entry = _cache.get(key)
-    if entry and time.monotonic() - entry[0] < _CACHE_TTL.get(key.split(":")[0], 300):
-        return entry[1]
+async def _cached(key: str) -> Any | None:
+    async with _cache_lock:
+        entry = _cache.get(key)
+        if entry and time.monotonic() - entry[0] < _CACHE_TTL.get(key.split(":")[0], 300):
+            return entry[1]
     return None
 
 
-def _set_cache(key: str, val: Any):
-    _cache[key] = (time.monotonic(), val)
-    if len(_cache) > _MAX_CACHE:
-        now = time.monotonic()
-        stale = [k for k, (t, _) in list(_cache.items()) if now - t > 300]
-        for k in stale:
-            _cache.pop(k, None)
+async def _set_cache(key: str, val: Any):
+    async with _cache_lock:
+        _cache[key] = (time.monotonic(), val)
         if len(_cache) > _MAX_CACHE:
-            oldest = sorted(_cache.keys(), key=lambda k: _cache[k][0])[:len(_cache) - _MAX_CACHE]
-            for k in oldest:
+            sorted_keys = sorted(_cache, key=lambda k: _cache[k][0])
+            evict_count = max(1, len(sorted_keys) // 4)
+            for k in sorted_keys[:evict_count]:
                 _cache.pop(k, None)
 
 
@@ -80,16 +80,18 @@ def cached(ttl: int = CACHE_TTL):
             raw = json.dumps([args, kw], sort_keys=True, default=str)
             key = f"{fn.__name__}:{hashlib.md5(raw.encode()).hexdigest()}"
             now = time.monotonic()
-            entry = _cache.get(key)
-            if entry and now - entry[0] < ttl:
-                return entry[1]
+            async with _cache_lock:
+                entry = _cache.get(key)
+                if entry and now - entry[0] < ttl:
+                    return entry[1]
             result = await fn(*args, **kw)
-            _cache[key] = (now, result)
-            if len(_cache) > _MAX_CACHE:
-                cutoff = now - 300
-                stale = [k for k, (t, _) in _cache.items() if t < cutoff]
-                for k in stale:
-                    del _cache[k]
+            async with _cache_lock:
+                _cache[key] = (now, result)
+                if len(_cache) > _MAX_CACHE:
+                    cutoff = now - 300
+                    stale = [k for k, (t, _) in _cache.items() if t < cutoff]
+                    for k in stale:
+                        del _cache[k]
             return result
         return wrapper
     return deco

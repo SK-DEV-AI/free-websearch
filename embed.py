@@ -36,7 +36,7 @@ async def _embed(texts: list[str], input_type: str = "passage",
     uncached_idx = []
     for i, t in enumerate(texts):
         k = f"emb:{input_type}:{encoding_format}:{t[:200]}"
-        entry = _cached(k)
+        entry = await _cached(k)
         if entry is not None:
             results[i] = entry
         else:
@@ -64,7 +64,7 @@ async def _embed(texts: list[str], input_type: str = "passage",
                             emb = list(map(float, struct.unpack(f'{len(decoded)//4}f', decoded)))
                         orig_idx = uncached_idx[idx]
                         results[orig_idx] = emb
-                        _set_cache(f"emb:{input_type}:{encoding_format}:{uncached[idx][:200]}", emb)
+                        await _set_cache(f"emb:{input_type}:{encoding_format}:{uncached[idx][:200]}", emb)
         except (httpx.HTTPError, ValueError, KeyError):
             pass
     final = [r for r in results if r is not None]

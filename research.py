@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import urllib.parse
 
 from config import cached
 from search_ddg import search_ddg, search_google_rss
@@ -107,14 +108,17 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             license_videos=license_videos))
             for i, q in enumerate(queries)}
 
+        tr_map = {"d": "day", "w": "week", "m": "month", "y": "year"}
+        tavily_tr = tr_map.get(timelimit, "")
+        firecrawl_tbs = timelimit or tbs
         tasks = {
             "rss": asyncio.create_task(search_google_rss(query, count, region=region)),
-            "firecrawl": asyncio.create_task(search_firecrawl(query, n=count, sources=firecrawl_sources, tbs=tbs, country=country)),
+            "firecrawl": asyncio.create_task(search_firecrawl(query, n=count, sources=firecrawl_sources, tbs=firecrawl_tbs, country=country)),
             "tavily": asyncio.create_task(search_tavily(query, n=count, topic=tavily_topic,
-                time_range=tbs, search_depth=tavily_depth, include_raw_content=True,
+                time_range=tavily_tr or tbs, search_depth=tavily_depth, include_raw_content=True,
                 start_date=start_date, end_date=end_date, exact_phrase=exact_phrase)),
             "wiki": asyncio.create_task(search_wikipedia(query, count=min(count, 5), language=language)),
-            "arxiv": asyncio.create_task(search_arxiv(query, count=min(count, 3), category=country)),
+            "arxiv": asyncio.create_task(search_arxiv(query, count=min(count, 3))),
             "anysearch": asyncio.create_task(search_anysearch(query, count=min(count, 5))),
             **ddg_tasks,
         }
@@ -202,13 +206,17 @@ async def enrich(results: list[dict], query: str, depth: int = 3,
     fetched = await asyncio.gather(
         *[fetch_url(url, max_chars=3000, fast=True) for url in urls], return_exceptions=True)
     fetched = [f for f in fetched if isinstance(f, dict) and f.get("success")]
-    wiki_summary = None
     for i, r in enumerate(results[:5]):
         url = r.get("url", "")
         if not url or "wikipedia.org" not in url:
             continue
-        if wiki_summary is None:
-            wiki_summary = await fetch_wikipedia_summary_rest(query, language=language)
+        page_path = urllib.parse.urlparse(url).path.strip("/")
+        if page_path.startswith("wiki/"):
+            page_path = page_path[5:]
+        page_title = urllib.parse.unquote(page_path.replace("_", " "))
+        if not page_title:
+            continue
+        wiki_summary = await fetch_wikipedia_summary_rest(page_title, language=language)
         if wiki_summary:
             for f in fetched:
                 if f.get("url") == url:
