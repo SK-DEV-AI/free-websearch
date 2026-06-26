@@ -51,17 +51,9 @@ async def expand_query(query: str) -> list[str]:
         return [query]
 
     prompt = (
-        "You are a search query optimizer. Generate 2-3 diverse search query "
-        "variations for the given query. Each variation should approach the "
-        "topic from a different angle:\n"
-        "- One broader/wider scope\n"
-        "- One more specific/technical\n"
-        "- One alternative phrasing\n\n"
-        "Rules:\n"
-        "- Each query must be concise (under 60 chars)\n"
-        "- Do NOT include the original query\n"
-        "- Do NOT number or explain\n"
-        "- One query per line, plain text only\n\n"
+        "Output exactly 2 keyword-only search query variations. Each variation "
+        "is one line of 3-6 keywords. No questions. No sentences. No numbering. "
+        "No prefixes. No explanation.\n\n"
         f"Original query: {query}"
     )
     try:
@@ -71,10 +63,13 @@ async def expand_query(query: str) -> list[str]:
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
-                "model": "openai/gpt-oss-20b",
-                "messages": [{"role": "user", "content": prompt}],
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": "Generate exactly 2 keyword-only search query variations. One query per line. No numbering. No prefixes. No explanations."},
+                    {"role": "user", "content": prompt},
+                ],
                 "temperature": 0.7,
-                "max_tokens": 150,
+                "max_tokens": 128,
             },
             timeout=15,
         )
