@@ -9,7 +9,7 @@ import trafilatura
 from scrapling.fetchers import AsyncFetcher, AsyncStealthySession
 
 from config import cached
-from search_gai import _get_cdp_browser, _get_optimized_page
+from search_gai import _get_cdp_browser, _get_optimized_page, _cleanup_orphan_tabs
 
 AsyncFetcher.configure(huge_tree=True)
 
@@ -109,6 +109,7 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                         await page.close()
                     except Exception:
                         pass
+                    asyncio.ensure_future(_cleanup_orphan_tabs())
             except Exception:
                 pass  # Fall through to httpx
 
@@ -319,6 +320,7 @@ async def scrapling_stealthy_fetch(
                         await page.close()
                     except Exception:
                         pass
+                asyncio.ensure_future(_cleanup_orphan_tabs())
         # CDP failed after all retries — fall through to scrapling
 
     # ── Scrapling AsyncStealthySession (last resort fallback) ──────

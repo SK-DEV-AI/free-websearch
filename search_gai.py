@@ -256,17 +256,14 @@ class GoogleAIClient:
         self._page_target_id = None
         return self._page
 
-    async def _recycle_page(self):
+    async def _close_page(self):
         if self._page:
             try:
-                await self._page.goto("about:blank", wait_until="domcontentloaded", timeout=10000)
+                await self._page.close()
             except Exception:
-                try:
-                    await self._page.close()
-                except Exception:
-                    pass
-                self._page = None
-                self._page_target_id = None
+                pass
+            self._page = None
+            self._page_target_id = None
 
     async def _detect_captcha(self, p) -> bool:
         try:
@@ -317,7 +314,8 @@ class GoogleAIClient:
                     self._available_at = time.monotonic()
                     return True
                 finally:
-                    await self._recycle_page()
+                    await self._close_page()
+                    asyncio.ensure_future(_cleanup_orphan_tabs())
             except Exception:
                 self._available = False
                 self._available_at = time.monotonic()
@@ -672,6 +670,7 @@ class GoogleAIClient:
                     await p.close()
                 except Exception:
                     pass
+                asyncio.ensure_future(_cleanup_orphan_tabs())
 
     async def close(self):
         try:

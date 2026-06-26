@@ -6,7 +6,7 @@ import os
 import tempfile
 import time
 
-from search_gai import _get_optimized_page
+from search_gai import _get_optimized_page, _cleanup_orphan_tabs
 
 
 async def cdpa11y_snapshot(url: str, verbose: bool = False, max_chars: int = 10000,
@@ -46,6 +46,7 @@ async def cdpa11y_snapshot(url: str, verbose: bool = False, max_chars: int = 100
                 await page.close()
             except Exception:
                 pass
+            asyncio.ensure_future(_cleanup_orphan_tabs())
     except Exception as e:
         return {"success": False, "url": url, "error": str(e)}
 
@@ -88,5 +89,6 @@ async def screenshot_cdp(url: str, full_page: bool = True,
                 await page.close()
             except Exception:
                 pass
+            asyncio.ensure_future(_cleanup_orphan_tabs())
     except Exception as e:
         return {"success": False, "url": url, "error": str(e)}
