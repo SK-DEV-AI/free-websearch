@@ -3,7 +3,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import Any
 
-import httpx
+from config import get_http_client
 
 
 async def search_arxiv(query: str, count: int = 3, search_field: str = "all",
@@ -23,9 +23,9 @@ async def search_arxiv(query: str, count: int = 3, search_field: str = "all",
                 search_q += f" AND cat:{category}"
             params = {"search_query": search_q, "start": start,
                 "max_results": min(count, 50), "sortBy": sort_by, "sortOrder": sort_order}
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get("https://export.arxiv.org/api/query", params=params,
-                            headers={"User-Agent": "mcp-codesearch/1.0"})
+        c = get_http_client()
+        r = await c.get("https://export.arxiv.org/api/query", params=params,
+                        headers={"User-Agent": "mcp-codesearch/1.0"}, timeout=15)
         if r.status_code != 200:
             return []
         ns = {"atom": "http://www.w3.org/2005/Atom",

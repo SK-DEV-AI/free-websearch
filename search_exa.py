@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from config import EXA_KEY, EXA_SIMILAR
+from config import EXA_KEY, EXA_SIMILAR, get_http_client
 
 EXA_SEARCH = "https://api.exa.ai/search"
 
@@ -17,11 +17,11 @@ async def _exa_request(method: str, url: str, body: dict | None, headers: dict,
     last_err = None
     for attempt in range(retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=timeout) as c:
-                if method == "POST":
-                    r = await c.post(url, json=body, headers=headers)
-                else:
-                    r = await c.get(url, headers=headers)
+            c = get_http_client()
+            if method == "POST":
+                r = await c.post(url, json=body, headers=headers, timeout=timeout)
+            else:
+                r = await c.get(url, headers=headers, timeout=timeout)
             if r.status_code == 429:
                 if attempt < retries:
                     await asyncio.sleep(2 * (attempt + 1))

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from config import _next_tavily_key
+from config import _next_tavily_key, get_http_client
 
 TAVILY_SEARCH = "https://api.tavily.com/search"
 TAVILY_EXTRACT = "https://api.tavily.com/extract"
@@ -47,10 +47,11 @@ async def search_tavily(query: str, n: int = 10, topic: str = "general",
     if chunks_per_source > 0:
         body["chunks_per_source"] = chunks_per_source
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(TAVILY_SEARCH, json=body,
-                             headers={"Authorization": f"Bearer {key}",
-                                      "Content-Type": "application/json"})
+        c = get_http_client()
+        r = await c.post(TAVILY_SEARCH, json=body,
+                         headers={"Authorization": f"Bearer {key}",
+                                  "Content-Type": "application/json"},
+                         timeout=15)
         if r.status_code != 200:
             return []
         data = r.json()
@@ -83,10 +84,11 @@ async def tavily_extract(urls: list[str], include_images: bool = False) -> list[
     if include_images:
         body["include_images"] = True
     try:
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(TAVILY_EXTRACT, json=body,
-                             headers={"Authorization": f"Bearer {key}",
-                                      "Content-Type": "application/json"})
+        c = get_http_client()
+        r = await c.post(TAVILY_EXTRACT, json=body,
+                         headers={"Authorization": f"Bearer {key}",
+                                  "Content-Type": "application/json"},
+                         timeout=30)
         if r.status_code != 200:
             return []
         data = r.json()
@@ -119,27 +121,28 @@ async def research_tavily(query: str, model: str = "auto", output_schema: dict |
     if output_schema:
         body["output_schema"] = output_schema
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(TAVILY_RESEARCH, json=body,
-                             headers={"Authorization": f"Bearer {key}",
-                                      "Content-Type": "application/json"})
-            if r.status_code not in (200, 201):
-                return {"success": False, "error": f"HTTP {r.status_code}"}
-            data = r.json()
-            request_id = data.get("request_id", "")
-            if not request_id:
-                return {"success": False, "error": "no request_id"}
-            deadline = asyncio.get_event_loop().time() + wait_seconds
-            while asyncio.get_event_loop().time() < deadline:
-                await asyncio.sleep(3)
-                sr = await c.get(f"{TAVILY_RESEARCH}/{request_id}",
-                                 headers={"Authorization": f"Bearer {key}"})
-                if sr.status_code != 200:
-                    continue
-                sd = sr.json()
-                status = sd.get("status", "")
-                if status == "completed":
-                    return {"success": True, "request_id": request_id,
+        c = get_http_client()
+        r = await c.post(TAVILY_RESEARCH, json=body,
+                         headers={"Authorization": f"Bearer {key}",
+                                  "Content-Type": "application/json"},
+                         timeout=15)
+        if r.status_code not in (200, 201):
+            return {"success": False, "error": f"HTTP {r.status_code}"}
+        data = r.json()
+        request_id = data.get("request_id", "")
+        if not request_id:
+            return {"success": False, "error": "no request_id"}
+        deadline = asyncio.get_event_loop().time() + wait_seconds
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(3)
+            sr = await c.get(f"{TAVILY_RESEARCH}/{request_id}",
+                             headers={"Authorization": f"Bearer {key}"})
+            if sr.status_code != 200:
+                continue
+            sd = sr.json()
+            status = sd.get("status", "")
+            if status == "completed":
+                return {"success": True, "request_id": request_id,
                             "answer": sd.get("answer", ""),
                             "sources": sd.get("sources", []) or sd.get("results", []),
                             "model_used": sd.get("model", model)}

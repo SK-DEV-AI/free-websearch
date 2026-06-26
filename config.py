@@ -7,6 +7,8 @@ import os
 import time
 from typing import Any
 
+import httpx
+
 CACHE_TTL = 120
 MAX_RESULTS = 20
 GOOGLE_AI_URL = "https://www.google.com/search"
@@ -91,3 +93,27 @@ def cached(ttl: int = CACHE_TTL):
             return result
         return wrapper
     return deco
+
+
+# ── Shared HTTP client pool ───────────────────────────────────────
+
+_http_client: httpx.AsyncClient | None = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    """Return a shared httpx.AsyncClient with connection pooling."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+        )
+    return _http_client
+
+
+async def close_http_client():
+    """Close the shared httpx client on server shutdown."""
+    global _http_client
+    if _http_client and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None

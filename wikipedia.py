@@ -4,7 +4,7 @@ import html
 import urllib.parse
 from typing import Any
 
-import httpx
+from config import get_http_client
 
 
 _WIKI_BASE = "https://{lang}.wikipedia.org/w/api.php"
@@ -13,8 +13,8 @@ _UA = "mcp-codesearch/1.0"
 
 
 async def _get(params: dict, language: str = "en", timeout: int = 10) -> dict | None:
-    async with httpx.AsyncClient(timeout=timeout) as c:
-        r = await c.get(_WIKI_BASE.format(lang=language), params=params, headers={"User-Agent": _UA})
+    c = get_http_client()
+    r = await c.get(_WIKI_BASE.format(lang=language), params=params, headers={"User-Agent": _UA}, timeout=timeout)
     return r.json() if r.status_code == 200 else None
 
 
@@ -83,10 +83,10 @@ async def fetch_wikipedia_summary(query: str, language: str = "en",
 async def fetch_wikipedia_summary_rest(title: str, language: str = "en") -> dict | None:
     """Fast page summary via REST API v1 — lighter than Action API."""
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(
-                _REST_BASE.format(lang=language) + f"page/summary/{urllib.parse.quote(title.replace(' ', '_'))}",
-                headers={"User-Agent": _UA})
+        c = get_http_client()
+        r = await c.get(
+            _REST_BASE.format(lang=language) + f"page/summary/{urllib.parse.quote(title.replace(' ', '_'))}",
+            headers={"User-Agent": _UA}, timeout=10)
         if r.status_code != 200:
             return None
         d = r.json()
@@ -161,10 +161,10 @@ async def fetch_wikipedia_pageviews(title: str, language: str = "en",
     """Get daily pageview stats for the last N days."""
     try:
         encoded = urllib.parse.quote(title.replace(" ", "_"))
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(
-                _REST_BASE.format(lang=language) + f"page/per-day/{encoded}/daily/{days}",
-                headers={"User-Agent": _UA})
+        c = get_http_client()
+        r = await c.get(
+            _REST_BASE.format(lang=language) + f"page/per-day/{encoded}/daily/{days}",
+            headers={"User-Agent": _UA}, timeout=10)
         if r.status_code != 200:
             return []
         d = r.json()

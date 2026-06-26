@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from config import _next_firecrawl_key
+from config import _next_firecrawl_key, get_http_client
 
 FIRECRAWL_SEARCH = "https://api.firecrawl.dev/v2/search"
 FIRECRAWL_MAP = "https://api.firecrawl.dev/v2/map"
@@ -28,10 +28,11 @@ async def search_firecrawl(query: str, n: int = 10, sources: str = "",
     if country:
         body["country"] = country
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(FIRECRAWL_SEARCH, json=body,
-                             headers={"Authorization": f"Bearer {key}",
-                                      "Content-Type": "application/json"})
+        c = get_http_client()
+        r = await c.post(FIRECRAWL_SEARCH, json=body,
+                         headers={"Authorization": f"Bearer {key}",
+                                  "Content-Type": "application/json"},
+                         timeout=15)
         if r.status_code != 200:
             return []
         data = r.json()
@@ -73,10 +74,11 @@ async def map_firecrawl(url: str, search: str = "", limit: int = 100,
     if search:
         body["search"] = search
     try:
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(FIRECRAWL_MAP, json=body,
-                             headers={"Authorization": f"Bearer {key}",
-                                      "Content-Type": "application/json"})
+        c = get_http_client()
+        r = await c.post(FIRECRAWL_MAP, json=body,
+                         headers={"Authorization": f"Bearer {key}",
+                                  "Content-Type": "application/json"},
+                         timeout=30)
         if r.status_code != 200:
             return []
         data = r.json()
@@ -109,10 +111,11 @@ async def firecrawl_scrape(url: str, formats: list[str] | None = None,
     if timeout:
         body["timeout"] = timeout
     try:
-        async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(FIRECRAWL_SCRAPE, json=body,
-                             headers={"Authorization": f"Bearer {key}",
-                                      "Content-Type": "application/json"})
+        c = get_http_client()
+        r = await c.post(FIRECRAWL_SCRAPE, json=body,
+                         headers={"Authorization": f"Bearer {key}",
+                                  "Content-Type": "application/json"},
+                         timeout=60)
         if r.status_code != 200:
             return {"success": False, "error": f"HTTP {r.status_code}"}
         data = r.json()
@@ -137,8 +140,8 @@ async def firecrawl_research(query: str, action: str = "search",
         return []
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=30) as c:
-            if action == "github":
+        c = get_http_client()
+        if action == "github":
                 params: dict[str, Any] = {"q": query, "limit": min(limit, 20)}
                 r = await c.get(FIRECRAWL_RESEARCH_GITHUB, params=params, headers=headers)
                 if r.status_code != 200:
@@ -148,7 +151,7 @@ async def firecrawl_research(query: str, action: str = "search",
                          "snippet": (item.get("description", "") or "")[:500],
                          "stars": item.get("stars", 0), "language": item.get("language", "")}
                         for item in (data.get("data", []) or [])]
-            elif action == "detail" and paper_id:
+        elif action == "detail" and paper_id:
                 r = await c.get(f"{FIRECRAWL_RESEARCH_PAPERS}/{paper_id}", headers=headers)
                 if r.status_code != 200:
                     return []
@@ -159,7 +162,7 @@ async def firecrawl_research(query: str, action: str = "search",
                          "authors": paper.get("authors", []),
                          "categories": paper.get("categories", []),
                          "primaryId": paper.get("primaryId", "")}]
-            elif action == "similar" and paper_id:
+        elif action == "similar" and paper_id:
                 params = {"intent": query, "limit": min(limit, 20)}
                 r = await c.get(f"{FIRECRAWL_RESEARCH_PAPERS}/{paper_id}/similar",
                                 params=params, headers=headers)
@@ -170,7 +173,7 @@ async def firecrawl_research(query: str, action: str = "search",
                          "abstract": (item.get("abstract", "") or "")[:500],
                          "score": item.get("score", 0)}
                         for item in (data.get("data", []) or [])]
-            else:
+        else:
                 params = {"q": query, "limit": min(limit, 20)}
                 if authors:
                     params["authors"] = authors

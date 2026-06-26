@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from config import GOOGLE_AI_URL, HELIUM_CDP
+from config import GOOGLE_AI_URL, HELIUM_CDP, get_http_client
 
 # ── Multi-language constants ──────────────────────────────────────
 
@@ -110,6 +110,7 @@ async def _create_hidden_page(ctx, url="about:blank"):
         cdp_session = await ctx.new_cdp_session(ctx.pages[0] if ctx.pages else await ctx.new_page())
         result = await cdp_session.send("Target.createTarget",
                                         {"url": url, "hidden": True, "focus": False})
+        target_id = result.get("targetId")
         for _ in range(10):
             await asyncio.sleep(0.05)
             for p in ctx.pages:
@@ -118,24 +119,80 @@ async def _create_hidden_page(ctx, url="about:blank"):
                         return p
                 except Exception:
                     pass
+        if target_id:
+            try:
+                await cdp_session.send("Target.closeTarget", {"targetId": target_id})
+            except Exception:
+                pass
     except Exception:
         pass
     return await ctx.new_page()
 
 
+_page_semaphore = asyncio.Semaphore(5)
+
 async def _get_optimized_page(block_resources: bool = True):
-    b = await _get_cdp_browser()
-    ctx = b.contexts[0]
-    page = await _create_hidden_page(ctx)
-    await page.add_init_script(ANTI_DETECT_JS)
-    if block_resources:
+    async with _page_semaphore:
+        b = await _get_cdp_browser()
+        ctx = b.contexts[0]
+        page = await _create_hidden_page(ctx)
+        await page.add_init_script(ANTI_DETECT_JS)
+        if block_resources:
+            try:
+                cdp = await ctx.new_cdp_session(page)
+                await cdp.send("Network.enable")
+                await cdp.send("Network.setBlockedURLs", {"urls": CDP_BLOCK_PATTERNS})
+                await cdp.detach()
+            except Exception:
+                pass
+        return page
+
+
+async def _cleanup_orphan_tabs():
+    """Close hidden about:blank pages that are not the active GoogleAIClient page."""
+    global _cdp_browser
+    if _cdp_browser is None:
+        return
+    try:
+        ctx = _cdp_browser.contexts[0]
+    except Exception:
+        return
+    gaiclient = _gaiclient
+    active_page = gaiclient._page if gaiclient else None
+    for p in list(ctx.pages):
         try:
-            cdp = await ctx.new_cdp_session(page)
-            await cdp.send("Network.enable")
-            await cdp.send("Network.setBlockedURLs", {"urls": CDP_BLOCK_PATTERNS})
+            if p.url == "about:blank" and p is not active_page:
+                await p.close()
         except Exception:
             pass
-    return page
+
+
+async def shutdown():
+    """Close CDP browser, playwright, and shared httpx client on server shutdown."""
+    global _cdp_pw, _cdp_browser, _gaiclient
+    if _gaiclient:
+        try:
+            await _gaiclient.close()
+        except Exception:
+            pass
+        _gaiclient = None
+    if _cdp_browser:
+        try:
+            await _cdp_browser.close()
+        except Exception:
+            pass
+        _cdp_browser = None
+    if _cdp_pw:
+        try:
+            await _cdp_pw.stop()
+        except Exception:
+            pass
+        _cdp_pw = None
+    try:
+        from config import close_http_client
+        await close_http_client()
+    except Exception:
+        pass
 
 # ── GoogleAIClient ─────────────────────────────────────────────────
 
@@ -188,6 +245,11 @@ class GoogleAIClient:
                         self._page = p
                         self._page_target_id = tid
                         return p
+            if tid:
+                try:
+                    await cdp.send("Target.closeTarget", {"targetId": tid})
+                except Exception:
+                    pass
         except Exception:
             pass
         self._page = await _create_hidden_page(ctx)
@@ -383,9 +445,10 @@ class GoogleAIClient:
                     await asyncio.sleep(1)
                     continue
                 # Fallback: server-side download → base64 data URL
-                async with httpx.AsyncClient(timeout=30, follow_redirects=True) as c:
-                    resp = await c.get(url, headers={
-                        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"})
+                c = get_http_client()
+                resp = await c.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"},
+                    follow_redirects=True)
                 if resp.status_code == 200 and len(resp.content) <= 10_000_000:
                     b64 = base64.b64encode(resp.content).decode('ascii')
                     ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower() or '.bin'

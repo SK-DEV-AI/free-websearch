@@ -10,7 +10,7 @@ import httpx
 
 import asyncio
 
-from config import NV_KEY, NV_BASE, NV_EMBED_MODEL, _cache, _MAX_CACHE, _cached, _set_cache
+from config import NV_KEY, NV_BASE, NV_EMBED_MODEL, _cache, _MAX_CACHE, _cached, _set_cache, get_http_client
 
 _NV_KEYS: list[str] = [k.strip() for k in NV_KEY.split(",") if k.strip()] if NV_KEY else []
 _nv_idx = 0
@@ -51,9 +51,9 @@ async def _embed(texts: list[str], input_type: str = "passage",
             "truncate": "END",
         }
         try:
-            async with httpx.AsyncClient(timeout=15) as c:
-                r = await c.post(f"{NV_BASE}/embeddings", json=body_payload,
-                                 headers={"Authorization": f"Bearer {nv_key}"})
+            c = get_http_client()
+            r = await c.post(f"{NV_BASE}/embeddings", json=body_payload,
+                             headers={"Authorization": f"Bearer {nv_key}"})
             if r.status_code == 200:
                 data = r.json()
                 for idx, row in zip(range(len(uncached)), data.get("data", [])):

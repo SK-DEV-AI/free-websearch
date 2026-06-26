@@ -7,15 +7,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import httpx
+from config import get_http_client
 import opendataloader_pdf
 
 __all__ = ["extract_pdf"]
 
 
 async def _download_pdf(url: str, dst: Path) -> Path:
-    async with httpx.AsyncClient(follow_redirects=True, timeout=60) as c:
-        r = await c.get(url)
+    c = get_http_client()
+    r = await c.get(url, follow_redirects=True, timeout=60)
     r.raise_for_status()
     dst.write_bytes(r.content)
     return dst

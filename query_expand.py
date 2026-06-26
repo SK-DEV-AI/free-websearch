@@ -65,18 +65,19 @@ async def expand_query(query: str) -> list[str]:
         f"Original query: {query}"
     )
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={
-                    "model": "openai/gpt-oss-20b",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                    "max_tokens": 150,
-                },
-            )
+        from config import get_http_client
+        c = get_http_client()
+        r = await c.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": "openai/gpt-oss-20b",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.7,
+                "max_tokens": 150,
+            },
+            timeout=15,
+        )
         if r.status_code == 200:
             text = r.json()["choices"][0]["message"]["content"].strip()
             lines = []

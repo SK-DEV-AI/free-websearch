@@ -131,8 +131,8 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                     md = next(Path(out_dir).glob(f"{stem}/output.md"), None)
                 finally:
                     os.unlink(tmp.name)
+                    shutil.rmtree(out_dir, ignore_errors=True)
                 md_text = md.read_text("utf-8", errors="replace")[:max_chars] if md else "[empty PDF]"
-                shutil.rmtree(out_dir, ignore_errors=True)
                 return {"success": True, "url": url, "title": url.split("/")[-1], "content": md_text}
             except Exception:
                 pass  # Fall through to httpx
@@ -256,6 +256,7 @@ async def scrapling_stealthy_fetch(
                         cdp_session = await page.context.new_cdp_session(page)
                         await cdp_session.send("Network.enable")
                         await cdp_session.send("Network.setBlockedURLs", {"urls": list(blocked_domains)})
+                        await cdp_session.detach()
                     except Exception:
                         pass
                 if init_script:
