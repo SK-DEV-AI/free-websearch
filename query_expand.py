@@ -71,7 +71,7 @@ async def expand_query(query: str) -> list[str]:
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
-                    "model": "llama-3.1-8b-instant",
+                    "model": "openai/gpt-oss-20b",
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.7,
                     "max_tokens": 150,
