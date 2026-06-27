@@ -24,10 +24,7 @@ EXA_KEY = os.environ.get("EXA_KEY", "")
 EXA_SIMILAR = "https://api.exa.ai/similar"
 
 TAVILY_KEYS = [k.strip() for k in os.environ.get("TAVILY_KEYS", "").split(",") if k.strip()]
-FIRECRAWL_KEYS = [k.strip() for k in os.environ.get("FIRECRAWL_KEYS", "").split(",") if k.strip()]
-
 _tavily_idx = 0
-_firecrawl_idx = 0
 
 def _next_tavily_key() -> str:
     global _tavily_idx
@@ -37,13 +34,6 @@ def _next_tavily_key() -> str:
     _tavily_idx += 1
     return key
 
-def _next_firecrawl_key() -> str:
-    global _firecrawl_idx
-    if not FIRECRAWL_KEYS:
-        return ""
-    key = FIRECRAWL_KEYS[_firecrawl_idx % len(FIRECRAWL_KEYS)]
-    _firecrawl_idx += 1
-    return key
 
 GROQ_API_KEYS = [k.strip() for k in os.environ.get("GROQ_API_KEYS", "").split(",") if k.strip()]
 RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "Alibaba-NLP/gte-reranker-modernbert-base")

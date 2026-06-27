@@ -27,7 +27,7 @@ from wikipedia import (search_wikipedia, fetch_wikipedia_summary, fetch_wikipedi
                        search_wikipedia_allpages)
 from arxiv import search_arxiv
 from search_tavily import tavily_extract
-from search_firecrawl import map_firecrawl, firecrawl_scrape, firecrawl_research
+from site_mapper import map_site
 from research import search_multi, enrich
 
 server = Server("free-websearch")
@@ -51,7 +51,7 @@ async def handle_list_tools() -> list[Tool]:
                 "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"}},
                 "required": ["query"]}),
         Tool(name="fetch",
-            description="URL to markdown/text. Use stealth=True for Cloudflare sites. Supports PDF, EPUB, DOCX.",
+            description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX. Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages.",
             inputSchema={"type": "object", "properties": {
                 "url": {"type": "string"}, "max_chars": {"type": "integer", "default": 5000},
                 "css_selector": {"type": "string"},
@@ -115,13 +115,16 @@ async def handle_list_tools() -> list[Tool]:
                 "category": {"type": "string", "description": "arXiv category filter (e.g. cs.AI, math.CO)"},
                 "raw_query": {"type": "string", "description": "Raw arXiv search_query syntax with boolean operators (AND/OR/ANDNOT), phrase, wildcards. Overrides query+search_field."}},
                 "required": ["query"]}),
-        Tool(name="firecrawl_map",
-            description="Firecrawl Map — discover URL structure of a site. Returns {url, title, description}[].",
+        Tool(name="map_site",
+            description="Discover all pages on a website via sitemap XML (primary) and HTML link extraction (fallback). Returns the base domain, source type, total count, and an array of discovered URLs with metadata (last_modified, priority, changefreq when available).",
             inputSchema={"type": "object", "properties": {
-                "url": {"type": "string"},
-                "search": {"type": "string", "description": "Filter links by relevance to this query"},
-                "limit": {"type": "integer", "default": 100},
-                "include_subdomains": {"type": "boolean", "default": True}},
+                "url": {"type": "string", "description": "Full URL of the site to map (e.g. https://example.com)"},
+                "max_urls": {"type": "integer", "default": 1000, "description": "Cap on returned URLs"},
+                "max_depth": {"type": "integer", "default": 0, "description": "Recursive link extraction depth (0=homepage only). Only used when no sitemap exists."},
+                "include_sitemap": {"type": "boolean", "default": True, "description": "Try sitemap discovery first"},
+                "include_links": {"type": "boolean", "default": True, "description": "Fall back to HTML link extraction when no sitemap"},
+                "same_domain": {"type": "boolean", "default": True, "description": "Only include URLs from the same domain"},
+                "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "Regex patterns to exclude matching URLs"}},
                 "required": ["url"]}),
         Tool(name="exa_similar",
             description="Find pages similar to a given URL via Exa.",
@@ -176,30 +179,6 @@ async def handle_list_tools() -> list[Tool]:
                 "urls": {"type": "array", "items": {"type": "string"}, "description": "URLs to extract (max 10)"},
                 "include_images": {"type": "boolean", "default": False}},
                 "required": ["urls"]}),
-        Tool(name="firecrawl_scrape",
-            description="Firecrawl Scrape — extract content from a single URL with fine-grained control over extraction.",
-            inputSchema={"type": "object", "properties": {
-                "url": {"type": "string"},
-                "formats": {"type": "array", "items": {"type": "string"}, "default": ["markdown"], "description": "Output formats: markdown, html, etc."},
-                "includeTags": {"type": "array", "items": {"type": "string"}},
-                "excludeTags": {"type": "array", "items": {"type": "string"}},
-                "waitFor": {"type": "string", "description": "CSS selector to wait for before extraction"},
-                "actions": {"type": "array", "items": {"type": "object"}, "description": "Browser actions to perform before extraction"},
-                "timeout": {"type": "integer", "default": 30000}},
-                "required": ["url"]}),
-        Tool(name="firecrawl_research",
-            description="Firecrawl Research — search academic papers, read passages, find related papers. Uses Firecrawl's research index for AI/ML papers.",
-            inputSchema={"type": "object", "properties": {
-                "query": {"type": "string", "description": "Natural-language query to search papers"},
-                "action": {"type": "string", "enum": ["search","detail","similar","github"], "default": "search",
-                    "description": "search=find papers, detail=read paper metadata/passages, similar=find related papers, github=search GitHub"},
-                "paper_id": {"type": "string", "description": "Paper ID for detail/similar actions (paperId or primaryId)"},
-                "authors": {"type": "string", "description": "Author substring filter (search only)"},
-                "categories": {"type": "string", "description": "Paper category filter e.g. cs.LG (search only)"},
-                "from_date": {"type": "string", "description": "Inclusive lower bound YYYY-MM-DD (search only)"},
-                "to_date": {"type": "string", "description": "Inclusive upper bound YYYY-MM-DD (search only)"},
-                "limit": {"type": "integer", "default": 10}},
-                "required": ["query"]}),
     ]
 
 
@@ -459,12 +438,6 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 category=str(arguments.get("category","")),
                 raw_query=str(arguments.get("raw_query","")))
             return _res({"success": True, "results": r})
-        elif name == "firecrawl_map":
-            r = await map_firecrawl(url=str(arguments.get("url","")),
-                search=str(arguments.get("search","")),
-                limit=safe_int(arguments.get("limit",100)),
-                include_subdomains=bool(arguments.get("include_subdomains",True)))
-            return _res({"success": True, "links": r})
         elif name == "exa_similar":
             r = await exa_similar(url=str(arguments.get("url","")),
                 count=safe_int(arguments.get("count",5)),
@@ -533,27 +506,15 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
             r = await tavily_extract(urls=urls,
                 include_images=bool(arguments.get("include_images",False)))
             return _res({"success": True, "results": r})
-        elif name == "firecrawl_scrape":
-            r = await firecrawl_scrape(url=str(arguments.get("url","")),
-                formats=arguments.get("formats"),
-                only_main_content=bool(arguments.get("onlyMainContent",True)),
-                include_tags=arguments.get("includeTags"),
-                exclude_tags=arguments.get("excludeTags"),
-                wait_for=str(arguments.get("waitFor","")),
-                actions=arguments.get("actions"),
-                timeout=safe_int(arguments.get("timeout",30000)))
+        elif name == "map_site":
+            r = await map_site(url=str(arguments.get("url","")),
+                max_urls=safe_int(arguments.get("max_urls",1000)),
+                max_depth=safe_int(arguments.get("max_depth",0)),
+                include_sitemap=bool(arguments.get("include_sitemap",True)),
+                include_links=bool(arguments.get("include_links",True)),
+                same_domain=bool(arguments.get("same_domain",True)),
+                exclude_patterns=arguments.get("exclude_patterns"))
             return _res(r)
-        elif name == "firecrawl_research":
-            r = await firecrawl_research(
-                query=str(arguments.get("query","")),
-                action=str(arguments.get("action","search")),
-                paper_id=str(arguments.get("paper_id","")),
-                authors=str(arguments.get("authors","")),
-                categories=str(arguments.get("categories","")),
-                from_date=str(arguments.get("from_date","")),
-                to_date=str(arguments.get("to_date","")),
-                limit=safe_int(arguments.get("limit", 10)))
-            return _res({"success": True, "results": r} if r else {"success": False, "error": "No results"})
         else:
             return CallToolResult(content=[TextContent(type="text", text=f"Unknown tool: {name}")], isError=True)
     except ValueError as e:

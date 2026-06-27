@@ -243,7 +243,7 @@ async def scrapling_stealthy_fetch(
     headless: bool = True, cdp_url: str | None = None, block_webrtc: bool = False,
     hide_canvas: bool = True, disable_resources: bool = True, google_search: bool = True,
     real_chrome: bool = False, proxy: str = "", locale: str = "", timezone_id: str = "",
-    network_idle: bool = True, allow_webgl: bool = True, block_ads: bool = True,
+    network_idle: bool = False, allow_webgl: bool = True, block_ads: bool = True,
     dns_over_https: bool = True, solve_cloudflare: bool = True, retries: int = 5,
     timeout: int = 30000, capture_xhr: str = "", wait_selector: str = "",
     wait_selector_state: str = "attached", blocked_domains: list | None = None,
