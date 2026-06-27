@@ -65,9 +65,24 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                     include_formatting: bool = True, include_links: bool = True,
                     prune_xpath: str = "", url_blacklist: str = "",
                     author_blacklist: str = "", cdp_url: str = "",
-                    min_output_size: int = 0) -> dict:
+                    min_output_size: int = 0, raw: bool = False) -> dict:
     try:
         url_lower = url.lower()
+
+        # Raw mode: skip CDP and trafilatura, return raw text directly
+        if raw or any(url_lower.startswith(p) for p in
+            ["https://raw.githubusercontent.com/", "https://raw.github.com/",
+             "https://gitlab.com/", "https://bitbucket.org/",
+             "https://gist.githubusercontent.com/"]):
+            try:
+                from scrapling.fetchers import AsyncFetcher
+                resp = await AsyncFetcher.get(url, timeout=15, stealthy_headers=True)
+                content = resp.body if isinstance(resp.body, str) else resp.body.decode("utf-8", errors="replace")
+                return {"success": True, "url": url, "title": url.split("/")[-1],
+                        "content": content.strip()[:max_chars],
+                        "method": "raw"}
+            except Exception as e:
+                return {"success": False, "url": url, "error": f"Raw fetch failed: {e}"}
 
         # CDP-first: use Helium browser when available (real cookies, no CAPTCHA)
         if cdp_url:

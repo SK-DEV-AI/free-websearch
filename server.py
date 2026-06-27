@@ -65,8 +65,9 @@ async def handle_list_tools() -> list[Tool]:
                 "proxy": {"type": "string"},
                 "wait_selector": {"type": "string"},
                 "init_script": {"type": "string", "description": "JS inject on load"},
-                "extra_headers": {"type": "object", "description": "Extra HTTP headers"},
-                },
+                   "extra_headers": {"type": "object", "description": "Extra HTTP headers"},
+                   "raw": {"type": "boolean", "description": "Skip CDP/trafilatura, return raw text directly (use for GitHub raw files, pastebin, etc.)"},
+                   },
                 "required": ["url"]}),
         Tool(name="crawl",
             description="BFS/DFS deep crawl. Returns per-page markdown + combined text.",
@@ -299,7 +300,8 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                     url_blacklist=str(arguments.get("url_blacklist","")),
                     author_blacklist=str(arguments.get("author_blacklist","")),
                     cdp_url=HELIUM_CDP or "",
-                    min_output_size=safe_int(arguments.get("min_output_size", 0)))
+                    min_output_size=safe_int(arguments.get("min_output_size", 0)),
+                    raw=bool(arguments.get("raw", False)))
             return _res(r)
         elif name == "crawl":
             r = await crawl_url(arguments["url"], max_depth=safe_int(arguments.get("max_depth",1)),
