@@ -11,7 +11,7 @@ Multi-engine web search MCP server for OpenCode. Searches DuckDuckGo, Google AI 
 - **wikipedia** — Search, summaries, geosearch, categories, pageviews, revisions
 - **arxiv** — Academic paper search with full metadata
 - **tavily_extract** — Extract content from specific URLs via Tavily
-- **map_site** — URL structure discovery (sitemap XML + HTML link fallback)
+- **map_site** — URL structure discovery via sitemap XML (supports RSS/Atom/plain text/gzipped), robots.txt, and HTML link fallback
 - **exa_similar** — Find pages similar to a URL
 - **pdf_extract** — Full PDF extraction (tables, OCR, formulas) via opendataloader-pdf
 
