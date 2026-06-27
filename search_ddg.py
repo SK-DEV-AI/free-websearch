@@ -16,12 +16,13 @@ from config import GNEWS_RSS
 async def search_ddg(
     query: str, count: int = 10, search_type: str = "auto", backend: str = "auto",
     timelimit: str = "", page: int = 1, region: str = "us-en", proxy: str = "",
-    timeout: int = 5, safesearch: str = "moderate",
+    timeout: int = 10, safesearch: str = "moderate",
     size: str = "", color: str = "", type_image: str = "", layout: str = "",
     license_image: str = "", resolution: str = "", duration: str = "",
     license_videos: str = "",
 ) -> list[dict]:
     try:
+        DDGS.threads = 8  # parallelize across 8 metasearch engines
         ddgs = DDGS(proxy=proxy or None, timeout=timeout)
         if search_type == "news":
             kw = dict(query=query, max_results=count, region=region, safesearch=safesearch,
