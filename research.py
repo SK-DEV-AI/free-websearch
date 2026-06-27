@@ -7,7 +7,6 @@ import urllib.parse
 from config import cached
 from search_ddg import search_ddg, search_google_rss
 from search_exa import exa_similar
-from search_firecrawl import search_firecrawl
 from search_tavily import search_tavily
 from search_anysearch import search_anysearch
 from search_gai import get_gai_client
@@ -36,8 +35,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                        language: str = "en", country: str = "",
                        upload_urls: list[str] | None = None,
                        query_expand: bool = True,
-                       tavily_topic: str = "general", tavily_depth: str = "basic",
-                       firecrawl_sources: str = "",
+                        tavily_topic: str = "general", tavily_depth: str = "basic",
                        size: str = "", color: str = "", type_image: str = "",
                        layout: str = "", license_image: str = "",
                        resolution: str = "", duration: str = "",
@@ -110,10 +108,8 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
 
         tr_map = {"d": "day", "w": "week", "m": "month", "y": "year"}
         tavily_tr = tr_map.get(timelimit, "")
-        firecrawl_tbs = timelimit or tbs
         tasks = {
             "rss": asyncio.create_task(search_google_rss(query, count, region=region)),
-            "firecrawl": asyncio.create_task(search_firecrawl(query, n=count, sources=firecrawl_sources, tbs=firecrawl_tbs, country=country)),
             "tavily": asyncio.create_task(search_tavily(query, n=count, topic=tavily_topic,
                 time_range=tavily_tr or tbs, search_depth=tavily_depth, include_raw_content=True,
                 start_date=start_date, end_date=end_date, exact_phrase=exact_phrase)),
@@ -124,7 +120,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
         }
         done = await asyncio.gather(*tasks.values(), return_exceptions=True)
         done_map = dict(zip(tasks.keys(), done))
-        for key in ("rss", "firecrawl", "tavily", "wiki", "arxiv", "anysearch") + tuple(ddg_tasks.keys()):
+        for key in ("rss", "tavily", "wiki", "arxiv", "anysearch") + tuple(ddg_tasks.keys()):
             val = done_map[key]
             if isinstance(val, BaseException) or not isinstance(val, list):
                 continue
@@ -134,7 +130,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                         r["engine"] = "duckduckgo" if key.startswith("ddg") else (
                             "google-news-rss" if key == "rss" else key)
                         results.append(r)
-        eng = {"rss": "google-news-rss", "firecrawl": "firecrawl", "tavily": "tavily", "wiki": "wikipedia", "arxiv": "arxiv", "anysearch": "anysearch"}
+        eng = {"rss": "google-news-rss", "tavily": "tavily", "wiki": "wikipedia", "arxiv": "arxiv", "anysearch": "anysearch"}
         for key, name in eng.items():
             val = done_map.get(key)
             if isinstance(val, list) and any(isinstance(r, dict) and "error" not in r for r in val):

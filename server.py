@@ -248,7 +248,6 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 query_expand=bool(arguments.get("query_expand",True)),
                 tavily_topic=str(arguments.get("tavily_topic","general")),
                 tavily_depth=str(arguments.get("tavily_depth","basic")),
-                firecrawl_sources=str(arguments.get("firecrawl_sources","")),
                 size=str(arguments.get("size","")),
                 color=str(arguments.get("color","")),
                 type_image=str(arguments.get("type_image","")),
