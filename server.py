@@ -12,7 +12,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from config import MAX_RESULTS, HELIUM_CDP
 from search_ddg import search_ddg, ddgs_extract
-from search_exa import exa_similar, exa_search
+from search_exa import exa_similar
 from search_gai import GoogleAIClient, get_gai_client
 from fetch import fetch_url, scrapling_stealthy_fetch
 from crawl import crawl_url
@@ -160,19 +160,6 @@ async def handle_list_tools() -> list[Tool]:
                 "reading_order": {"type": "string", "enum": ["", "natural", "xy-cut"], "description": "Reading order algorithm"},
                 "image_output": {"type": "string", "enum": ["", "placeholders", "embedded"], "description": "Image handling in output"}},
                 "required": ["input_path"]}),
-        Tool(name="exa_search",
-            description="Exa search — find content across the web by semantic query. Supports domain filtering and date ranges.",
-            inputSchema={"type": "object", "properties": {
-                "query": {"type": "string"},
-                "num_results": {"type": "integer", "default": 10},
-                "search_type": {"type": "string", "enum": ["auto","keyword","neural","magic"], "default": "auto"},
-                "include_domains": {"type": "array", "items": {"type": "string"}},
-                "exclude_domains": {"type": "array", "items": {"type": "string"}},
-                "start_published_date": {"type": "string", "description": "Filter results published after this date (YYYY-MM-DD)"},
-                "end_published_date": {"type": "string", "description": "Filter results published before this date (YYYY-MM-DD)"},
-                "highlights": {"type": "boolean"},
-                "summary": {"type": "boolean"}},
-                "required": ["query"]}),
         Tool(name="tavily_extract",
             description="Tavily Extract — pull content from specific URLs via Tavily API. Returns raw content and metadata.",
             inputSchema={"type": "object", "properties": {
@@ -488,17 +475,6 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 keep_line_breaks=bool(arguments.get("keep_line_breaks", False)),
                 markdown_with_html=bool(arguments.get("markdown_with_html", False)))
             return _res(r)
-        elif name == "exa_search":
-            r = await exa_search(query=str(arguments.get("query","")),
-                num_results=safe_int(arguments.get("num_results",10)),
-                search_type=str(arguments.get("search_type","auto")),
-                include_domains=arguments.get("include_domains"),
-                exclude_domains=arguments.get("exclude_domains"),
-                start_published_date=str(arguments.get("start_published_date","")),
-                end_published_date=str(arguments.get("end_published_date","")),
-                highlights=bool(arguments.get("highlights",False)),
-                summary=bool(arguments.get("summary",False)))
-            return _res({"success": True, "results": r})
         elif name == "tavily_extract":
             urls = arguments.get("urls", [])
             if isinstance(urls, str):
