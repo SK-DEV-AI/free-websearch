@@ -96,7 +96,7 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                         content = trafilatura.extract(
                             html_c, output_format='markdown', include_links=include_links,
                             include_images=include_images, include_tables=True,
-                            deduplicate=deduplicate,
+                            deduplicate=deduplicate, fast=True,
                         ) or await page.evaluate("document.body.innerText || ''")
                     if isinstance(content, bytes):
                         content = content.decode("utf-8", errors="replace")
@@ -233,7 +233,7 @@ async def _cdp_extract_content(page, css_selector: str | None, extraction_type: 
         if text and text.strip():
             return text.strip()
         html_c = await page.evaluate("document.documentElement.outerHTML")
-        content = trafilatura.extract(html_c, output_format='markdown')
+        content = trafilatura.extract(html_c, output_format='markdown', fast=True)
         return content or await page.evaluate("document.body.innerText || ''")
     return await page.evaluate("document.body.innerText || ''")
 
@@ -380,7 +380,7 @@ async def scrapling_stealthy_fetch(
                 elif extraction_type == "markdown":
                     content = p.get_all_text()
                     html_c = p.body if isinstance(p.body, str) else p.body.decode("utf-8", errors="replace")
-                    content = trafilatura.extract(html_c, output_format='markdown') or content
+                    content = trafilatura.extract(html_c, output_format='markdown', fast=True) or content
                 else:
                     content = p.get_all_text()
             if isinstance(content, bytes):
