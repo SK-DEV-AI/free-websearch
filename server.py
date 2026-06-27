@@ -577,9 +577,17 @@ async def _warmup_reranker():
     except Exception:
         pass
 
+async def _warmup_gai():
+    """Pre-warm GAI CDP connection at server start."""
+    try:
+        from search_gai import get_gai_client
+        await get_gai_client()
+    except Exception:
+        pass
 
 async def main():
     asyncio.create_task(_warmup_reranker())
+    asyncio.create_task(_warmup_gai())
     async with stdio_server() as (rs, ws):
         await server.run(rs, ws, server.create_initialization_options())
 

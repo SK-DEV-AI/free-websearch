@@ -93,15 +93,22 @@ async def _get_cdp_browser():
     global _cdp_pw, _cdp_browser
     from playwright.async_api import async_playwright
     async with _cdp_lock:
-        if _cdp_pw is None or _cdp_browser is None:
-            _cdp_pw = await async_playwright().start()
-            _cdp_browser = await _cdp_pw.chromium.connect_over_cdp(HELIUM_CDP)
-        else:
+        if _cdp_pw and _cdp_browser:
             try:
-                _cdp_browser.contexts()
+                ctx = _cdp_browser.contexts
+                if ctx:
+                    pgs = ctx[0].pages
+                    if pgs:
+                        await asyncio.wait_for(pgs[0].title(), timeout=5)
+                return _cdp_browser
             except Exception:
-                _cdp_pw = await async_playwright().start()
-                _cdp_browser = await _cdp_pw.chromium.connect_over_cdp(HELIUM_CDP)
+                pass
+            try:
+                await _cdp_pw.stop()
+            except Exception:
+                pass
+        _cdp_pw = await async_playwright().start()
+        _cdp_browser = await _cdp_pw.chromium.connect_over_cdp(HELIUM_CDP)
         return _cdp_browser
 
 async def _create_hidden_page(ctx, url="about:blank"):

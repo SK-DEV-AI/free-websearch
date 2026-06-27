@@ -143,7 +143,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             engines_used.append("duckduckgo")
 
         try:
-            completed, _ = await asyncio.wait([gai_future], timeout=5)
+            completed, _ = await asyncio.wait([gai_future], timeout=15)
         except BaseException:
             completed = set()
         if gai_future in completed:
