@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
 from mcp.server import Server
@@ -36,7 +37,7 @@ server = Server("free-websearch")
 async def handle_list_tools() -> list[Tool]:
     return [
         Tool(name="search",
-            description="Multi-engine web search with dedup and reranking. depth=1 returns snippets; depth>=2 also fetches full page content and re-ranks. Use upload_urls for image/PDF upload to GAI.",
+            description="Multi-engine web search with dedup and reranking. depth=1 returns snippets; depth>=2 fetches full pages + re-ranks. synthesize=True (default) returns a Groq-synthesized answer with [N] citations.",
             inputSchema={"type": "object", "properties": {
                 "query": {"type": "string"}, "count": {"type": "integer", "default": 10},
                 "depth": {"type": "integer", "default": 1, "description": "1=snippets, 2+=fetch full pages + rerank"},
@@ -48,7 +49,8 @@ async def handle_list_tools() -> list[Tool]:
                 "upload_urls": {"type": "array", "items": {"type": "string"}, "description": "Image/PDF URLs or local file paths for GAI"},
                 "extract_links": {"type": "boolean", "description": "Discover related links via exa_similar before fetching (depth>=2 only)"},
                 "start_date": {"type": "string", "description": "Tavily date filter start (YYYY-MM-DD)"},
-                "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"}},
+                "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"},
+                "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"}},
                 "required": ["query"]}),
         Tool(name="fetch",
             description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX. Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages.",
@@ -232,6 +234,29 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                     cdp_url=HELIUM_CDP, count=count, language=lang)
                 if fetched.get("fetched_content"):
                     r["fetched_content"] = fetched["fetched_content"]
+            if r.get("success") and bool(arguments.get("synthesize", True)) and r.get("results"):
+                try:
+                    top = r["results"][:3]
+                    ctx = "\n\n".join(f"[{i+1}] {x.get('title','')}: {x.get('content','')[:400]}"
+                                     for i, x in enumerate(top))
+                    key = None
+                    for k in os.environ.get("GROQ_API_KEYS", "").split(","):
+                        k = k.strip()
+                        if k: key = k; break
+                    if key:
+                        from config import get_http_client
+                        c = get_http_client()
+                        resp = await c.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                            json={"model": "llama-3.3-70b-versatile",
+                                  "messages": [{"role": "system", "content": "Answer concisely from sources. Use [N] citations like [1][2]."},
+                                               {"role": "user", "content": f"Query: {query}\n\nResults:\n{ctx}"}],
+                                  "temperature": 0.3, "max_tokens": 256}, timeout=15)
+                        if resp.status_code == 200:
+                            r["synthesis"] = {"answer": resp.json()["choices"][0]["message"]["content"].strip()}
+                except Exception:
+                    pass
             return _res(r)
         elif name == "fetch":
             if bool(arguments.get("stealth",False)):
