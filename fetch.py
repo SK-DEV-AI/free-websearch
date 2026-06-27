@@ -75,7 +75,6 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
              "https://gitlab.com/", "https://bitbucket.org/",
              "https://gist.githubusercontent.com/"]):
             try:
-                from scrapling.fetchers import AsyncFetcher
                 resp = await AsyncFetcher.get(url, timeout=15, stealthy_headers=True)
                 content = resp.body if isinstance(resp.body, str) else resp.body.decode("utf-8", errors="replace")
                 return {"success": True, "url": url, "title": url.split("/")[-1],
