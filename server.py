@@ -27,7 +27,6 @@ from wikipedia import (search_wikipedia, fetch_wikipedia_summary, fetch_wikipedi
                        search_wikipedia_recentchanges, fetch_wikipedia_langlinks,
                        search_wikipedia_allpages)
 from arxiv import search_arxiv
-from search_tavily import tavily_extract
 from site_mapper import map_site
 from research import search_multi, enrich
 
@@ -77,9 +76,6 @@ async def handle_list_tools() -> list[Tool]:
                 "extract_links": {"type": "boolean", "default": True},
                 "strategy": {"type": "string", "enum": ["bfs","dfs"], "default": "bfs"},
                 "css_selector": {"type": "string"}, "exclude_domains": {"type": "array", "items": {"type": "string"}},
-                "js_code": {"type": "string"}, "wait_for": {"type": "string"},
-                "proxy": {"type": "string"},
-                "headers": {"type": "object"},
                 "content_filter": {"type": "string", "enum": ["","pruning","bm25","bm25_hq","cosine"]},
                 "filter_query": {"type": "string"},
                 "css_extract": {"type": "object", "description": "JSON CSS extraction schema with 'name' and 'selector' keys.", "properties": {"name": {"type": "string"}, "selector": {"type": "string"}}}},
@@ -163,12 +159,6 @@ async def handle_list_tools() -> list[Tool]:
                 "reading_order": {"type": "string", "enum": ["", "natural", "xy-cut"], "description": "Reading order algorithm"},
                 "image_output": {"type": "string", "enum": ["", "placeholders", "embedded"], "description": "Image handling in output"}},
                 "required": ["input_path"]}),
-        Tool(name="tavily_extract",
-            description="Tavily Extract — pull content from specific URLs via Tavily API. Returns raw content and metadata.",
-            inputSchema={"type": "object", "properties": {
-                "urls": {"type": "array", "items": {"type": "string"}, "description": "URLs to extract (max 10)"},
-                "include_images": {"type": "boolean", "default": False}},
-                "required": ["urls"]}),
     ]
 
 
@@ -304,50 +294,13 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                     raw=bool(arguments.get("raw", False)))
             return _res(r)
         elif name == "crawl":
-            r = await crawl_url(arguments["url"], max_depth=safe_int(arguments.get("max_depth",1)),
+            r = await crawl_url(arguments["url"],
+                max_depth=safe_int(arguments.get("max_depth",1)),
                 max_pages=safe_int(arguments.get("max_pages",10)),
                 extract_links=bool(arguments.get("extract_links",True)),
-                js_code=str(arguments.get("js_code","")), wait_for=str(arguments.get("wait_for","")),
-                session_id=str(arguments.get("session_id","")), locale=str(arguments.get("locale","")),
-                timezone_id=str(arguments.get("timezone_id","")),
-                check_robots_txt=bool(arguments.get("check_robots_txt",False)),
                 strategy=str(arguments.get("strategy","bfs")),
-                screenshot=bool(arguments.get("screenshot",False)),
-                pdf=bool(arguments.get("pdf",False)), proxy=str(arguments.get("proxy","")),
-                magic=bool(arguments.get("magic",True)),
-                flatten_shadow_dom=bool(arguments.get("flatten_shadow_dom",True)),
-                process_iframes=bool(arguments.get("process_iframes",True)),
-                scan_full_page=bool(arguments.get("scan_full_page",True)),
-                wait_for_images=bool(arguments.get("wait_for_images",True)),
-                word_count_threshold=safe_int(arguments.get("word_count_threshold",30)),
-                page_timeout=safe_int(arguments.get("page_timeout",60000)),
-                max_retries=safe_int(arguments.get("max_retries",2)),
-                browser_type=str(arguments.get("browser_type","chromium")),
-                user_agent=str(arguments.get("user_agent","")),
-                headers=arguments.get("headers"),
-                extra_args=arguments.get("extra_args"),
-                geolocation_lat=safe_float(arguments.get("geolocation_lat",0)),
-                geolocation_lng=safe_float(arguments.get("geolocation_lng",0)),
-                delay_before_return_html=safe_float(arguments.get("delay_before_return_html",0.1)),
-                stream=bool(arguments.get("stream",False)),
-                capture_mhtml=bool(arguments.get("capture_mhtml",False)),
-                capture_network_requests=bool(arguments.get("capture_network_requests",False)),
-                capture_console_messages=bool(arguments.get("capture_console_messages",False)),
-                exclude_external_links=bool(arguments.get("exclude_external_links",False)),
-                exclude_social_media_links=bool(arguments.get("exclude_social_media_links",False)),
-                exclude_domains=arguments.get("exclude_domains"),
                 css_selector=str(arguments.get("css_selector","")),
-                target_elements=arguments.get("target_elements"),
-                memory_saving_mode=bool(arguments.get("memory_saving_mode",False)),
-                remove_forms=bool(arguments.get("remove_forms",False)),
-                keep_data_attributes=bool(arguments.get("keep_data_attributes",False)),
-                method=str(arguments.get("method","GET")),
-                score_links=bool(arguments.get("score_links",False)),
-                simulate_user=bool(arguments.get("simulate_user",True)),
-                override_navigator=bool(arguments.get("override_navigator",True)),
-                cdp_url=str(arguments.get("cdp_url", HELIUM_CDP)),
-                adjust_viewport_to_content=bool(arguments.get("adjust_viewport_to_content",False)),
-                log_console=bool(arguments.get("log_console",False)),
+                exclude_domains=arguments.get("exclude_domains"),
                 content_filter=str(arguments.get("content_filter","")),
                 filter_query=str(arguments.get("filter_query","")),
                 css_extract=arguments.get("css_extract"))
@@ -502,13 +455,6 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 keep_line_breaks=bool(arguments.get("keep_line_breaks", False)),
                 markdown_with_html=bool(arguments.get("markdown_with_html", False)))
             return _res(r)
-        elif name == "tavily_extract":
-            urls = arguments.get("urls", [])
-            if isinstance(urls, str):
-                urls = [urls]
-            r = await tavily_extract(urls=urls,
-                include_images=bool(arguments.get("include_images",False)))
-            return _res({"success": True, "results": r})
         elif name == "map_site":
             r = await map_site(url=str(arguments.get("url","")),
                 max_urls=safe_int(arguments.get("max_urls",1000)),
