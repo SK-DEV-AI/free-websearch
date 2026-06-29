@@ -52,7 +52,7 @@ async def handle_list_tools() -> list[Tool]:
                 "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"}},
                 "required": ["query"]}),
         Tool(name="fetch",
-            description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX. Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages.",
+            description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX. Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages. Use start_line/end_line for range reads instead of guessing max_chars.",
             inputSchema={"type": "object", "properties": {
                 "url": {"type": "string"}, "max_chars": {"type": "integer", "default": 5000},
                 "css_selector": {"type": "string"},
@@ -66,6 +66,8 @@ async def handle_list_tools() -> list[Tool]:
                 "init_script": {"type": "string", "description": "JS inject on load"},
                    "extra_headers": {"type": "object", "description": "Extra HTTP headers"},
                    "raw": {"type": "boolean", "description": "Skip CDP/trafilatura, return raw text directly (use for GitHub raw files, pastebin, etc.)"},
+                   "start_line": {"type": "integer", "description": "1-based start line for reading a range (slices content by newline)"},
+                   "end_line": {"type": "integer", "description": "1-based end line (inclusive). Use with start_line for targeted reading."},
                    },
                 "required": ["url"]}),
         Tool(name="crawl",
@@ -81,14 +83,16 @@ async def handle_list_tools() -> list[Tool]:
                 "css_extract": {"type": "object", "description": "JSON CSS extraction schema with 'name' and 'selector' keys.", "properties": {"name": {"type": "string"}, "selector": {"type": "string"}}}},
                 "required": ["url"]}),
         Tool(name="screenshot",
-            description="CDP screenshot or ARIA accessibility snapshot.",
+            description="CDP screenshot or ARIA accessibility snapshot. Use start_line/end_line for snapshot text range reads.",
             inputSchema={"type": "object", "properties": {
                 "url": {"type": "string"}, "full_page": {"type": "boolean", "default": True},
                 "type": {"type": "string", "enum": ["screenshot","snapshot","both"]},
                 "max_chars": {"type": "integer", "default": 10000},
                 "depth": {"type": "integer"},
                 "scale": {"type": "string", "enum": ["css","device"]},
-                "quality": {"type": "integer", "description": "JPEG quality 1-100"}},
+                "quality": {"type": "integer", "description": "JPEG quality 1-100"},
+                "start_line": {"type": "integer", "description": "1-based start line for snapshot text range"},
+                "end_line": {"type": "integer", "description": "1-based end line (inclusive) for snapshot text range"}},
                 "required": ["url"]}),
         Tool(name="wikipedia",
             description="Search Wikipedia: articles, summaries, geosearch, random. Actions: search, summary (REST API v1 fast), summary_action (Action API with images/sections), categories, links, extlinks, categorymembers, pageviews, revisions, backlinks, recentchanges.",
@@ -292,6 +296,19 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                     cdp_url=HELIUM_CDP or "",
                     min_output_size=safe_int(arguments.get("min_output_size", 0)),
                     raw=bool(arguments.get("raw", False)))
+            # Line range slicing after fetch
+            start_line = safe_int(arguments.get("start_line", 0))
+            end_line = safe_int(arguments.get("end_line", 0))
+            if r.get("content"):
+                all_lines = r["content"].split("\n")
+                r["total_lines"] = len(all_lines)
+                r["total_chars"] = len(r["content"])
+                if start_line > 0:
+                    if end_line > 0:
+                        r["content"] = "\n".join(all_lines[start_line - 1:end_line])
+                    else:
+                        r["content"] = "\n".join(all_lines[start_line - 1:])
+                    r["returned_lines"] = r["content"].count("\n") + 1
             return _res(r)
         elif name == "crawl":
             r = await crawl_url(arguments["url"],
@@ -327,10 +344,25 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                     quality=arguments.get("quality"),
                     image_type=str(arguments.get("image_type","png")))
             if cap_type == "snapshot":
-                return _res(snap)
-            if cap_type == "both":
-                return _res({"screenshot": ss, "snapshot": snap})
-            return _res(ss)
+                r = snap
+            elif cap_type == "both":
+                r = {"screenshot": ss, "snapshot": snap}
+            else:
+                r = ss
+            # Line range slicing for snapshot content
+            if isinstance(r, dict) and r.get("content"):
+                all_lines = r["content"].split("\n")
+                r["total_lines"] = len(all_lines)
+                r["total_chars"] = len(r["content"])
+                start_line = safe_int(arguments.get("start_line", 0))
+                end_line = safe_int(arguments.get("end_line", 0))
+                if start_line > 0:
+                    if end_line > 0:
+                        r["content"] = "\n".join(all_lines[start_line - 1:end_line])
+                    else:
+                        r["content"] = "\n".join(all_lines[start_line - 1:])
+                    r["returned_lines"] = r["content"].count("\n") + 1
+            return _res(r)
         elif name == "wikipedia":
             action = str(arguments.get("action", "search"))
             lang = str(arguments.get("language", "en"))
