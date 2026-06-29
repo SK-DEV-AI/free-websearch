@@ -50,10 +50,10 @@ async def handle_list_tools() -> list[Tool]:
                 "start_date": {"type": "string", "description": "Tavily date filter start (YYYY-MM-DD)"},
                 "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"},
                 "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"},
-                "domain": {"type": "string", "description": "AnySearch vertical domain: finance, code, academic, health, travel, legal, security, etc. Auto-detected from query when omitted."}},
+                "domain": {"type": "string", "description": "AnySearch vertical: finance, code, academic, health, travel, legal, security. Guessed from query via simple heuristic — may be wrong, omit for general search."}},
                 "required": ["query"]}),
         Tool(name="fetch",
-            description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX. Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages. Use start_line/end_line for range reads instead of guessing max_chars.",
+            description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX (default path only). Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages. Use start_line/end_line for range reads instead of guessing max_chars.",
             inputSchema={"type": "object", "properties": {
                 "url": {"type": "string"}, "max_chars": {"type": "integer", "default": 5000},
                 "css_selector": {"type": "string"},
@@ -149,7 +149,7 @@ async def handle_list_tools() -> list[Tool]:
                 "url": {"type": "string"}, "extract_type": {"type": "string", "enum": ["markdown","text_plain","raw"], "default": "markdown"}},
                 "required": ["url"]}),
         Tool(name="pdf_extract",
-            description="PDF to structured data via opendataloader-pdf (#1 benchmark, 0.907 accuracy). Extracts text, tables, formulas, images with bounding boxes. Supports scanned PDFs (OCR), complex tables, and accessibility tagging.",
+            description="PDF to structured data via opendataloader-pdf. Extracts text, tables, formulas, images with bounding boxes. Supports scanned PDFs (OCR), complex tables, and accessibility tagging.",
             inputSchema={"type": "object", "properties": {
                 "input_path": {"type": "array", "items": {"type": "string"}, "description": "PDF file paths or URLs (local files, http/https, file://)"},
                 "format": {"type": "string", "enum": ["markdown","json","html","tagged-pdf","markdown,json","markdown,json,html"], "default": "markdown"},
