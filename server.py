@@ -49,7 +49,8 @@ async def handle_list_tools() -> list[Tool]:
                 "extract_links": {"type": "boolean", "description": "Discover related links via exa_similar before fetching (depth>=2 only)"},
                 "start_date": {"type": "string", "description": "Tavily date filter start (YYYY-MM-DD)"},
                 "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"},
-                "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"}},
+                "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"},
+                "domain": {"type": "string", "description": "AnySearch vertical domain: finance, code, academic, health, travel, legal, security, etc. Auto-detected from query when omitted."}},
                 "required": ["query"]}),
         Tool(name="fetch",
             description="URL to markdown/text. Use stealth=True for Cloudflare sites (CDP via Helium). Supports PDF, EPUB, DOCX. Default: fast (domcontentloaded only); use network_idle=True (not in schema) for JS-heavy pages. Use start_line/end_line for range reads instead of guessing max_chars.",
@@ -222,6 +223,7 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 start_date=str(arguments.get("start_date","")),
                 end_date=str(arguments.get("end_date","")),
                 exact_phrase=bool(arguments.get("exact_phrase",False)),
+                domain=str(arguments.get("domain","")),
                 cdp_url=HELIUM_CDP)
             if r.get("success") and depth >= 2 and r.get("results"):
                 fetched = await enrich(r["results"], query, depth=depth,
