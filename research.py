@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import urllib.parse
 
 from config import cached
@@ -17,7 +16,6 @@ from query_expand import expand_query
 from reranker import rerank as _rerank
 from resilience import CircuitBreaker
 
-logger = logging.getLogger(__name__)
 
 # Circuit breakers for external APIs (shared across calls)
 _gai_breaker = CircuitBreaker(failure_threshold=3, cooldown_seconds=120)
@@ -42,7 +40,6 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                        license_videos: str = "",
                        start_date: str = "", end_date: str = "",
                        exact_phrase: bool = False) -> dict:
-    import urllib.parse
     engines_used: list[str] = []
     results: list[dict] = []
     ai_answer = ""
@@ -112,7 +109,8 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             "rss": asyncio.create_task(search_google_rss(query, count, region=region)),
             "tavily": asyncio.create_task(search_tavily(query, n=count, topic=tavily_topic,
                 time_range=tavily_tr or tbs, search_depth=tavily_depth, include_raw_content=True,
-                start_date=start_date, end_date=end_date, exact_phrase=exact_phrase)),
+                start_date=start_date, end_date=end_date, exact_phrase=exact_phrase,
+                country=country)),
             "wiki": asyncio.create_task(search_wikipedia(query, count=min(count, 5), language=language)),
             "arxiv": asyncio.create_task(search_arxiv(query, count=min(count, 3))),
             "anysearch": asyncio.create_task(search_anysearch(query, count=min(count, 5), domain=domain)),
@@ -184,7 +182,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
 
 
 async def enrich(results: list[dict], query: str, depth: int = 3,
-                 extract_links: bool = False, cdp_url: str | None = None,
+                 cdp_url: str | None = None,
                  count: int = 10, language: str = "en") -> dict:
     """Fetch full page content from top results, dedup, rerank.
 

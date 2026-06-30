@@ -9,7 +9,7 @@ import trafilatura
 from scrapling.fetchers import AsyncFetcher, AsyncStealthySession
 
 from config import cached
-from search_gai import _get_cdp_browser, _get_optimized_page, _cleanup_orphan_tabs
+from search_gai import _get_optimized_page, _cleanup_orphan_tabs
 
 AsyncFetcher.configure(huge_tree=True)
 
@@ -61,7 +61,8 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                     target_language: str = "", favor_precision: bool = False,
                     favor_recall: bool = False, fast: bool = False,
                     deduplicate: bool = True, output_format: str = "markdown",
-                    include_images: bool = True, include_comments: bool = True,
+                    include_images: bool = True, include_tables: bool = True,
+                    include_comments: bool = True,
                     include_formatting: bool = True, include_links: bool = True,
                     prune_xpath: str = "", url_blacklist: str = "",
                     author_blacklist: str = "", cdp_url: str = "",
@@ -109,7 +110,7 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                         html_c = await page.evaluate("document.documentElement.outerHTML")
                         content = trafilatura.extract(
                             html_c, output_format='markdown', include_links=include_links,
-                            include_images=include_images, include_tables=True,
+                            include_images=include_images, include_tables=include_tables,
                             deduplicate=deduplicate, fast=True,
                         ) or await page.evaluate("document.body.innerText || ''")
                     if isinstance(content, bytes):
@@ -171,7 +172,7 @@ async def fetch_url(url: str, max_chars: int = 5000, main_content_only: bool = T
                     "content": content[:max_chars] + ("\n[...truncated]" if len(content) > max_chars else "")}
         kw: dict[str, Any] = {
             "output_format": output_format, "with_metadata": True,
-            "include_links": include_links, "include_tables": True,
+                        "include_links": include_links, "include_tables": include_tables,
             "include_images": include_images, "include_comments": include_comments,
             "include_formatting": include_formatting, "deduplicate": deduplicate,
         }

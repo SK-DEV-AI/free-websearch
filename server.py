@@ -43,9 +43,8 @@ async def handle_list_tools() -> list[Tool]:
                 "timelimit": {"type": "string", "description": "Time filter: d/w/m/y"},
                 "safesearch": {"type": "string", "enum": ["off","moderate","strict"], "default": "moderate"},
                 "language": {"type": "string", "default": "en", "description": "Content language for Wikipedia/summaries"},
-                "country": {"type": "string", "description": "Geo-targeting country code (Firecrawl, search results)"},
+                "country": {"type": "string", "description": "Geo-targeting country code (Tavily search results)"},
                 "upload_urls": {"type": "array", "items": {"type": "string"}, "description": "Image/PDF URLs or local file paths for GAI"},
-                "extract_links": {"type": "boolean", "description": "Discover related links before fetching (depth>=2 only)"},
                 "start_date": {"type": "string", "description": "Tavily date filter start (YYYY-MM-DD)"},
                 "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"},
                 "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"},
@@ -222,7 +221,6 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 cdp_url=HELIUM_CDP)
             if r.get("success") and depth >= 2 and r.get("results"):
                 fetched = await enrich(r["results"], query, depth=depth,
-                    extract_links=bool(arguments.get("extract_links",False)),
                     cdp_url=HELIUM_CDP, count=count, language=lang)
                 if fetched.get("fetched_content"):
                     r["fetched_content"] = fetched["fetched_content"]
@@ -284,6 +282,7 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                     deduplicate=bool(arguments.get("deduplicate",True)),
                     output_format=str(arguments.get("output_format","markdown")),
                     include_images=bool(arguments.get("include_images",True)),
+                    include_tables=bool(arguments.get("include_tables",True)),
                     include_comments=bool(arguments.get("include_comments",True)),
                     include_formatting=bool(arguments.get("include_formatting",True)),
                     include_links=bool(arguments.get("include_links",True)),

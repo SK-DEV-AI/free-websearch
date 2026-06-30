@@ -1,7 +1,6 @@
-"""PDF extraction via opendataloader-pdf — #1 benchmark PDF parser."""
+"""PDF extraction via opendataloader-pdf."""
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from pathlib import Path
