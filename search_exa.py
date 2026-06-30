@@ -9,6 +9,7 @@ import httpx
 from config import EXA_KEY, EXA_SIMILAR, get_http_client
 
 EXA_SEARCH = "https://api.exa.ai/search"
+EXA_ANSWER = "https://api.exa.ai/answer"
 
 
 async def _exa_request(method: str, url: str, body: dict | None, headers: dict,
@@ -125,3 +126,19 @@ async def exa_similar(url: str, count: int = 5, highlights: bool = False,
             entry["published_date"] = h["publishedDate"]
         results.append(entry)
     return results
+
+
+async def exa_answer(query: str, model: str = "exa-pro") -> dict:
+    """Exa answer endpoint — direct Q&A with citations."""
+    if not EXA_KEY:
+        return {"success": False, "error": "no exa key"}
+    try:
+        r = await _exa_request("POST", EXA_ANSWER, {"query": query, "model": model},
+                               {"x-api-key": EXA_KEY, "Content-Type": "application/json"}, timeout=30)
+        data = r.json()
+        answer = data.get("answer", "")
+        citations = data.get("citations", [])
+        return {"success": True, "answer": answer[:10000],
+                "citations": [{"url": c.get("url", ""), "title": c.get("title", "")} for c in (citations or [])]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

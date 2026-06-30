@@ -13,7 +13,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from config import MAX_RESULTS, HELIUM_CDP
 from search_ddg import search_ddg, ddgs_extract
-from search_exa import exa_similar
+from search_exa import exa_similar, exa_answer
 from search_gai import GoogleAIClient, get_gai_client
 from fetch import fetch_url, scrapling_stealthy_fetch
 from crawl import crawl_url
@@ -71,6 +71,10 @@ async def handle_list_tools() -> list[Tool]:
                    "raw": {"type": "boolean", "description": "Skip CDP/trafilatura, return raw text directly (use for GitHub raw files, pastebin, etc.)"},
                    "network_idle": {"type": "boolean", "default": True, "description": "Wait for network idle before extracting (slower but captures JS-rendered content)"},
                    "retries": {"type": "integer", "default": 5, "description": "Retry count for flaky pages/CDP"},
+                   "include_images": {"type": "boolean", "default": True, "description": "Include image captions/alt text"},
+                   "include_links": {"type": "boolean", "default": True, "description": "Include hyperlinks in output"},
+                   "include_formatting": {"type": "boolean", "default": True, "description": "Preserve text formatting (bold, italic, etc)"},
+                   "include_tables": {"type": "boolean", "default": True, "description": "Extract tables from HTML"},
                    "start_line": {"type": "integer", "description": "1-based start line for reading a range (slices content by newline)"},
                    "end_line": {"type": "integer", "description": "1-based end line (inclusive). Use with start_line for targeted reading."},
                    },
@@ -148,6 +152,12 @@ async def handle_list_tools() -> list[Tool]:
                 "start_published_date": {"type": "string", "description": "Filter results published after this date (YYYY-MM-DD)"},
                 "end_published_date": {"type": "string", "description": "Filter results published before this date (YYYY-MM-DD)"}},
                 "required": ["url"]}),
+        Tool(name="exa_answer",
+            description="Exa answer endpoint — direct Q&A with citations. Returns an answer text with source citations for any question.",
+            inputSchema={"type": "object", "properties": {
+                "query": {"type": "string", "description": "Question to answer"},
+                "model": {"type": "string", "default": "exa-pro", "description": "Model: exa-pro (default)"}},
+                "required": ["query"]}),
          Tool(name="ddgs_extract",
             description="Lightweight URL content extraction via DuckDuckGo's extract endpoint. Faster than fetch for simple pages — markdown or plain text. Best for search snippets and quick page reads where trafilatura is overkill.",
             inputSchema={"type": "object", "properties": {
@@ -460,6 +470,10 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 start_published_date=str(arguments.get("start_published_date","")),
                 end_published_date=str(arguments.get("end_published_date","")))
             return _res({"success": True, "results": r})
+        elif name == "exa_answer":
+            r = await exa_answer(query=str(arguments.get("query","")),
+                model=str(arguments.get("model","exa-pro")))
+            return _res(r)
         elif name == "ddgs_extract":
             r = await ddgs_extract(url=str(arguments.get("url", "")),
                 extract_type=str(arguments.get("extract_type", "markdown")))
