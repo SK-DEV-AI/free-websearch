@@ -13,7 +13,6 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from config import MAX_RESULTS, HELIUM_CDP
 from search_ddg import search_ddg, ddgs_extract
-from search_exa import exa_similar, exa_answer
 from search_gai import GoogleAIClient, get_gai_client
 from fetch import fetch_url, scrapling_stealthy_fetch
 from crawl import crawl_url
@@ -46,7 +45,7 @@ async def handle_list_tools() -> list[Tool]:
                 "language": {"type": "string", "default": "en", "description": "Content language for Wikipedia/summaries"},
                 "country": {"type": "string", "description": "Geo-targeting country code (Firecrawl, search results)"},
                 "upload_urls": {"type": "array", "items": {"type": "string"}, "description": "Image/PDF URLs or local file paths for GAI"},
-                "extract_links": {"type": "boolean", "description": "Discover related links via exa_similar before fetching (depth>=2 only)"},
+                "extract_links": {"type": "boolean", "description": "Discover related links before fetching (depth>=2 only)"},
                 "start_date": {"type": "string", "description": "Tavily date filter start (YYYY-MM-DD)"},
                 "end_date": {"type": "string", "description": "Tavily date filter end (YYYY-MM-DD)"},
                 "synthesize": {"type": "boolean", "default": True, "description": "Groq-synthesize top results into a concise answer with citations"},
@@ -139,25 +138,6 @@ async def handle_list_tools() -> list[Tool]:
                 "same_domain": {"type": "boolean", "default": True, "description": "Only include URLs from the same domain"},
                 "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "Regex patterns to exclude matching URLs"}},
                 "required": ["url"]}),
-        Tool(name="exa_similar",
-            description="Find pages similar to a given URL via Exa.",
-            inputSchema={"type": "object", "properties": {
-                "url": {"type": "string"},
-                "count": {"type": "integer", "default": 5},
-                "highlights": {"type": "boolean"},
-                "summary": {"type": "boolean"},
-                "include_domains": {"type": "array", "items": {"type": "string"}},
-                "exclude_domains": {"type": "array", "items": {"type": "string"}},
-                "category": {"type": "string", "description": "Category filter: company, research paper, news, tweet, movie, song, personal site, pdf"},
-                "start_published_date": {"type": "string", "description": "Filter results published after this date (YYYY-MM-DD)"},
-                "end_published_date": {"type": "string", "description": "Filter results published before this date (YYYY-MM-DD)"}},
-                "required": ["url"]}),
-        Tool(name="exa_answer",
-            description="Exa answer endpoint — direct Q&A with citations. Returns an answer text with source citations for any question.",
-            inputSchema={"type": "object", "properties": {
-                "query": {"type": "string", "description": "Question to answer"},
-                "model": {"type": "string", "default": "exa-pro", "description": "Model: exa-pro (default)"}},
-                "required": ["query"]}),
          Tool(name="ddgs_extract",
             description="Lightweight URL content extraction via DuckDuckGo's extract endpoint. Faster than fetch for simple pages — markdown or plain text. Best for search snippets and quick page reads where trafilatura is overkill.",
             inputSchema={"type": "object", "properties": {
@@ -454,26 +434,7 @@ async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
                 category=str(arguments.get("category","")),
                 raw_query=str(arguments.get("raw_query","")))
             return _res({"success": True, "results": r})
-        elif name == "exa_similar":
-            r = await exa_similar(url=str(arguments.get("url","")),
-                count=safe_int(arguments.get("count",5)),
-                highlights=bool(arguments.get("highlights",False)),
-                summary=bool(arguments.get("summary",False)),
-                subpages=safe_int(arguments.get("subpages",0)),
-                include_domains=arguments.get("include_domains"),
-                exclude_domains=arguments.get("exclude_domains"),
-                category=str(arguments.get("category","")),
-                system_prompt=str(arguments.get("system_prompt","")),
-                output_schema=arguments.get("output_schema"),
-                stream=bool(arguments.get("stream",False)),
-                user_location=str(arguments.get("user_location","")),
-                start_published_date=str(arguments.get("start_published_date","")),
-                end_published_date=str(arguments.get("end_published_date","")))
-            return _res({"success": True, "results": r})
-        elif name == "exa_answer":
-            r = await exa_answer(query=str(arguments.get("query","")),
-                model=str(arguments.get("model","exa-pro")))
-            return _res(r)
+
         elif name == "ddgs_extract":
             r = await ddgs_extract(url=str(arguments.get("url", "")),
                 extract_type=str(arguments.get("extract_type", "markdown")))

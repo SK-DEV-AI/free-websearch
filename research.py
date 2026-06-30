@@ -6,7 +6,6 @@ import urllib.parse
 
 from config import cached
 from search_ddg import search_ddg, search_google_rss
-from search_exa import exa_similar
 from search_tavily import search_tavily
 from search_anysearch import search_anysearch
 from search_gai import get_gai_client
@@ -190,16 +189,12 @@ async def enrich(results: list[dict], query: str, depth: int = 3,
     """Fetch full page content from top results, dedup, rerank.
 
     Takes snippet results (from search_multi), fetches their full content,
-    optionally discovers related links via exa_similar, deduplicates by
-    embedding cosine similarity, and reranks by query relevance.
+    deduplicates by embedding cosine similarity, and reranks by query relevance.
     Also enriches Wikipedia results with full summary extracts.
     """
     urls = [r["url"] for r in results if r.get("url")]
     if not urls:
         return {"fetched_content": []}
-    if extract_links:
-        similar = await exa_similar(urls[0], count=3)
-        urls.extend([s["url"] for s in similar if s.get("url") and s["url"] not in urls])
     fetched = await asyncio.gather(
         *[fetch_url(url, max_chars=3000, fast=True) for url in urls], return_exceptions=True)
     fetched = [f for f in fetched if isinstance(f, dict) and f.get("success")]

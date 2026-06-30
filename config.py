@@ -20,8 +20,6 @@ NV_KEY = os.environ.get("NV_KEY", "")
 NV_BASE = "https://integrate.api.nvidia.com/v1"
 NV_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
 
-EXA_KEY = os.environ.get("EXA_KEY", "")
-EXA_SIMILAR = "https://api.exa.ai/similar"
 
 TAVILY_KEYS = [k.strip() for k in os.environ.get("TAVILY_KEYS", "").split(",") if k.strip()]
 _tavily_idx = 0

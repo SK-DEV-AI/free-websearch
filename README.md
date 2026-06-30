@@ -1,6 +1,6 @@
 # free-websearch MCP Server
 
-Multi-engine web search MCP server for OpenCode. Searches DuckDuckGo, Google AI Mode (udm=50), Tavily, Wikipedia, arXiv, Exa, and AnySearch in parallel with embedding dedup + cross-encoder reranking.
+Multi-engine web search MCP server for OpenCode. Searches DuckDuckGo, Google AI Mode (udm=50), Tavily, Wikipedia, arXiv, and AnySearch in parallel with embedding dedup + cross-encoder reranking.
 
 ## Tools
 
@@ -10,9 +10,7 @@ Multi-engine web search MCP server for OpenCode. Searches DuckDuckGo, Google AI 
 - **screenshot** — CDP screenshot or ARIA accessibility snapshot
 - **wikipedia** — Search, summaries, geosearch, categories, pageviews, revisions
 - **arxiv** — Academic paper search with full metadata
-- **tavily_extract** — Extract content from specific URLs via Tavily
 - **map_site** — URL structure discovery via sitemap XML (supports RSS/Atom/plain text/gzipped), robots.txt, and HTML link fallback
-- **exa_similar** — Find pages similar to a URL
 - **pdf_extract** — Full PDF extraction (tables, OCR, formulas) via opendataloader-pdf
 
 ## Setup

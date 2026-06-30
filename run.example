@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Copy to 'run' and fill in your API keys
 export NV_KEY="nvapi-YOUR_KEY"
-export EXA_KEY="YOUR_KEY"
 export GROQ_API_KEYS="gsk-YOUR_KEY"
 export TAVILY_KEYS="tvly-dev-YOUR_KEY"
-export FIRECRAWL_KEYS="fc-YOUR_KEY"
+
 export RERANKER_MODEL="Alibaba-NLP/gte-reranker-modernbert-base"
 exec /home/sk/.local/share/venvs/mcp/bin/python3 /home/sk/.config/opencode/mcp-servers/free-websearch/server.py "$@"
