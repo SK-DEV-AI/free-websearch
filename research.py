@@ -7,6 +7,7 @@ from config import cached
 from search_ddg import search_ddg, search_google_rss
 from search_tavily import search_tavily
 from search_anysearch import search_anysearch
+from search_tinyfish import tinyfish_search
 from search_gai import get_gai_client
 from fetch import fetch_url
 from embed import _embed, _dedup_rank, _cosine_sim
@@ -114,11 +115,12 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             "wiki": asyncio.create_task(search_wikipedia(query, count=min(count, 5), language=language)),
             "arxiv": asyncio.create_task(search_arxiv(query, count=min(count, 3))),
             "anysearch": asyncio.create_task(search_anysearch(query, count=min(count, 5), domain=domain)),
+            "tinyfish": asyncio.create_task(tinyfish_search(query, count=min(count, 5))),
             **ddg_tasks,
         }
         done = await asyncio.gather(*tasks.values(), return_exceptions=True)
         done_map = dict(zip(tasks.keys(), done))
-        for key in ("rss", "tavily", "wiki", "arxiv", "anysearch") + tuple(ddg_tasks.keys()):
+        for key in ("rss", "tavily", "wiki", "arxiv", "anysearch", "tinyfish") + tuple(ddg_tasks.keys()):
             val = done_map[key]
             if isinstance(val, BaseException) or not isinstance(val, list):
                 continue
@@ -128,7 +130,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
                         r["engine"] = "duckduckgo" if key.startswith("ddg") else (
                             "google-news-rss" if key == "rss" else key)
                         results.append(r)
-        eng = {"rss": "google-news-rss", "tavily": "tavily", "wiki": "wikipedia", "arxiv": "arxiv", "anysearch": "anysearch"}
+        eng = {"rss": "google-news-rss", "tavily": "tavily", "wiki": "wikipedia", "arxiv": "arxiv", "anysearch": "anysearch", "tinyfish": "tinyfish"}
         for key, name in eng.items():
             val = done_map.get(key)
             if isinstance(val, list) and any(isinstance(r, dict) and "error" not in r for r in val):
@@ -137,7 +139,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             engines_used.append("duckduckgo")
 
         try:
-            completed, _ = await asyncio.wait([gai_future], timeout=15)
+            completed, _ = await asyncio.wait([gai_future], timeout=20)
         except BaseException:
             completed = set()
         if gai_future in completed:
