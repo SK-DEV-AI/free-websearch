@@ -67,3 +67,27 @@ async def tinyfish_search(
         return results[:count]
     except Exception:
         return []
+
+
+async def tinyfish_fetch(url: str, format: str = "markdown") -> dict | None:
+    """Fetch and extract content from a URL via TinyFish."""
+    key = _next_key()
+    if not key:
+        return None
+    headers = {"X-API-Key": key, "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.fetch.tinyfish.ai",
+                headers=headers,
+                json={"url": url, "format": format},
+            )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        text = data.get("text", "")
+        if not text:
+            return None
+        return {"success": True, "content": text, "format": format}
+    except Exception:
+        return None
