@@ -533,7 +533,7 @@ class GoogleAIClient:
                         return {"success": False, "error": "CAPTCHA detected"}
 
                 # ── Completion detection ──
-                deadline = time.monotonic() + (120 if upload_urls else 90)
+                deadline = time.monotonic() + (300 if upload_urls else 240)
                 await self._wait_for_completion(p, deadline)
 
                 remaining = deadline - time.monotonic()

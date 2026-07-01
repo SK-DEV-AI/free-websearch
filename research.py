@@ -55,7 +55,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
         try:
             r = await asyncio.wait_for(gai.search(query, search_prompt=search_prompt,
                 pro_mode=pro_mode, gl=gl, hl=hl, tbs=tbs, pws=pws, upload_urls=upload_urls),
-                timeout=45)
+                timeout=300)
             if r.get("success"):
                 _gai_breaker.record_success()
                 return r
