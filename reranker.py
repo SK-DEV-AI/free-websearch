@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +18,52 @@ _READER = None
 _WRITER = None
 
 
+async def _close_connection():
+    """Close the current connection and kill the stale worker process."""
+    global _READER, _WRITER, _PROC
+    if _READER is not None:
+        try:
+            _READER.feed_eof()
+        except Exception:
+            pass
+        _READER = None
+    if _WRITER is not None:
+        try:
+            _WRITER.close()
+            await _WRITER.wait_closed()
+        except Exception:
+            pass
+        _WRITER = None
+    # Kill a stale worker that won't accept new connections
+    if _PROC is not None:
+        try:
+            if _PROC.returncode is None:
+                _PROC.send_signal(signal.SIGTERM)
+                try:
+                    await asyncio.wait_for(_PROC.wait(), timeout=3)
+                except asyncio.TimeoutError:
+                    _PROC.kill()
+                    await _PROC.wait()
+        except Exception:
+            pass
+        _PROC = None
+
+
 async def _ensure_worker():
     global _PROC, _READER, _WRITER
     if _PROC is not None and _PROC.returncode is None:
         return True
+    # Close stale connection before attempting new one
+    await _close_connection()
     try:
         _READER, _WRITER = await asyncio.open_unix_connection(_SOCKET_PATH)
         return True
     except (FileNotFoundError, ConnectionRefusedError, OSError):
+        pass
+    # Remove stale socket so new worker can bind
+    try:
+        os.unlink(_SOCKET_PATH)
+    except OSError:
         pass
     try:
         _PROC = await asyncio.create_subprocess_exec(
@@ -61,6 +100,7 @@ async def warmup() -> bool:
             result = json.loads(r)
             return not result.get("error")
         except Exception:
+            await _close_connection()
             return False
 
 
@@ -83,15 +123,13 @@ async def rerank(query: str, passages: list[dict], top_k: int = 20) -> list[dict
             await asyncio.wait_for(_WRITER.drain(), timeout=5)
         except (BrokenPipeError, OSError, asyncio.TimeoutError) as e:
             logger.warning(f"reranker: write failed: {e}")
-            _WRITER = None
-            _PROC = None
+            await _close_connection()
             return passages[:top_k]
         try:
-            r = await asyncio.wait_for(_READER.readuntil(b"\n"), timeout=120)
+            r = await asyncio.wait_for(_READER.readuntil(b"\n"), timeout=30)
         except (asyncio.IncompleteReadError, ConnectionResetError, asyncio.TimeoutError) as e:
             logger.warning(f"reranker: read failed: {e}")
-            _WRITER = None
-            _PROC = None
+            await _close_connection()
             return passages[:top_k]
         try:
             result = json.loads(r)
