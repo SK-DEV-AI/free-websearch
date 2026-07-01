@@ -19,7 +19,6 @@ from resilience import CircuitBreaker
 
 
 # Circuit breakers for external APIs (shared across calls)
-_gai_breaker = CircuitBreaker(failure_threshold=3, cooldown_seconds=120)
 _ddg_breaker = CircuitBreaker(failure_threshold=5, cooldown_seconds=60)
 
 
@@ -50,26 +49,23 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
 
     async def _gai_search():
         gai = await get_gai_client(cdp_url)
-        if not gai or not _gai_breaker.allow():
+        if not gai:
             return None
         try:
             r = await asyncio.wait_for(gai.search(query, search_prompt=search_prompt,
                 pro_mode=pro_mode, gl=gl, hl=hl, tbs=tbs, pws=pws, upload_urls=upload_urls),
                 timeout=300)
             if r.get("success"):
-                _gai_breaker.record_success()
                 return r
-            _gai_breaker.record_failure()
         except asyncio.TimeoutError:
-            _gai_breaker.record_failure()
+            pass
         except Exception:
-            _gai_breaker.record_failure()
+            pass
         return None
 
     if google_ai_only:
         r = await _gai_search()
         if r:
-            _gai_breaker.record_success()
             engines_used.append("google-ai-mode")
             rd = r["result"]
             ai_answer = rd.get("answer", "")
@@ -141,7 +137,7 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             engines_used.append("duckduckgo")
 
         try:
-            completed, _ = await asyncio.wait([gai_future], timeout=20)
+            completed, _ = await asyncio.wait([gai_future], timeout=120)
         except BaseException:
             completed = set()
         if gai_future in completed:
@@ -150,7 +146,6 @@ async def search_multi(query: str, count: int = 10, cdp_url: str | None = None,
             except BaseException:
                 r = None
             if r and r.get("success"):
-                _gai_breaker.record_success()
                 engines_used.append("google-ai-mode")
                 rd = r["result"]
                 ai_answer = rd.get("answer", "")
