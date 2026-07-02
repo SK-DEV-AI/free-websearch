@@ -2,7 +2,6 @@
 
 Provides:
 - CircuitBreaker: stops calling a failing API until it recovers
-- safe_call: wraps async calls with timeout + retry + fallback
 """
 
 from __future__ import annotations
@@ -64,35 +63,3 @@ class CircuitBreaker:
         return self._state == "open"
 
 
-async def safe_call(
-    fn: Callable[..., Any],
-    *args,
-    fallback: Any = None,
-    timeout: float = 30,
-    retries: int = 1,
-    **kwargs,
-) -> Any:
-    """Call an async function with timeout and retry, returning fallback on failure.
-
-    Args:
-        fn: Async function to call
-        *args: Positional args for fn
-        fallback: Value to return on any failure
-        timeout: Max seconds per attempt
-        retries: Number of retry attempts (0 = no retry)
-        **kwargs: Keyword args for fn
-
-    Returns:
-        Result of fn(*args, **kwargs) or fallback on failure
-    """
-    last_err = None
-    for attempt in range(retries + 1):
-        try:
-            return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
-        except asyncio.TimeoutError:
-            last_err = f"timeout after {timeout}s"
-        except Exception as e:
-            last_err = str(e)
-            if attempt < retries:
-                await asyncio.sleep(0.5 * (attempt + 1))
-    return fallback
